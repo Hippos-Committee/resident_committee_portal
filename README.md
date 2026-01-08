@@ -1,82 +1,57 @@
-# Welcome to React Router!
+# TOAS Hippos Resident Committee Portal
 
-A modern, production-ready template for building full-stack React applications using React Router.
+Tämä on TOAS Hippos -asukkaille suunnattu palvelu, jonka kautta asukkaat voivat ottaa yhteyttä asukastoimikuntaan, hakea toimikunnan jäseneksi, ehdottaa tapahtumia tai pyytää hankintoja. Sivuston tavoitteena on lisätä asukastoimikunnan toiminnan läpinäkyvyyttä ja helpottaa osallistumista.
 
-[![Open in StackBlitz](https://developer.stackblitz.com/img/open_in_stackblitz.svg)](https://stackblitz.com/github/remix-run/react-router-templates/tree/main/default)
+This is a portal for the residents of TOAS Hippos. Residents can use this platform to contact the tenant committee, apply for membership, suggest new events, or request purchases for common use. The goal of this site is to increase transparency and lower the barrier for resident involvement.
 
-## Features
+---
 
-- 🚀 Server-side rendering
-- ⚡️ Hot Module Replacement (HMR)
-- 📦 Asset bundling and optimization
-- 🔄 Data loading and mutations
-- 🔒 TypeScript by default
-- 🎉 TailwindCSS for styling
-- 📖 [React Router docs](https://reactrouter.com/)
+## Keskeiset Toiminnot / Key Features
 
-## Getting Started
+- **Osallistu / Get Involved**: Integroidut lomakkeet asukastoimikuntaan hakemiseen, tapahtumaehdotuksiin ja hankintapyyntöihin.
+- **Tapahtumat / Events**: Ajantasainen näkymä tulevista tapahtumista (integroitu Google Calendariin).
+- **Avoimuus / Transparency**: Helppo pääsy asukastoimikunnan pöytäkirjoihin ja talousarvioon suoraan Google Drivesta.
+- **Yhteydenotto / Contact**: Selkeä kanava kysymyksille ja palautteelle.
+- **Ylläpito / Admin**: Toimikunnan jäsenille tarkoitettu hallintapaneeli hakemusten ja asioiden käsittelyyn.
 
-### Installation
+## Teknologia / Tech Stack
 
-Install the dependencies:
+- **Framework**: [React Router 7](https://reactrouter.com/) (Vite)
+- **Styling**: [Tailwind CSS 4](https://tailwindcss.com/)
+- **Components**: [shadcn/ui](https://ui.shadcn.com/) pohjaiset komponentit
+- **Integrations**: Google Cloud API (Sheets, Drive, Calendar)
+- **Linting & Formatting**: [Biome](https://biomejs.dev/)
+- **Runtime**: [Bun](https://bun.sh/) (suositeltu)
 
-```bash
-npm install
-```
+## Aloitus / Getting Started
 
-### Development
+### Asennus / Installation
 
-Start the development server with HMR:
-
-```bash
-npm run dev
-```
-
-Your application will be available at `http://localhost:5173`.
-
-## Building for Production
-
-Create a production build:
+Varmista että sinulla on [Bun](https://bun.sh/) asennettuna:
 
 ```bash
-npm run build
+bun install
 ```
 
-## Deployment
+### Kehitys / Development
 
-### Docker Deployment
-
-To build and run using Docker:
+Käynnistä kehityspalvelin:
 
 ```bash
-docker build -t my-app .
-
-# Run the container
-docker run -p 3000:3000 my-app
+bun dev
 ```
 
-The containerized application can be deployed to any platform that supports Docker, including:
+Sovellus on saatavilla osoitteessa `http://localhost:5173`.
 
-- AWS ECS
-- Google Cloud Run
-- Azure Container Apps
-- Digital Ocean App Platform
-- Fly.io
-- Railway
+### Tuotantoversio / Production
 
-### DIY Deployment
+Rakenna optimoitu tuotantoversio:
 
-If you're familiar with deploying Node applications, the built-in app server is production-ready.
-
-Make sure to deploy the output of `npm run build`
-
+```bash
+bun run build
 ```
-├── package.json
-├── package-lock.json (or pnpm-lock.yaml, or bun.lockb)
-├── build/
-│   ├── client/    # Static assets
-│   └── server/    # Server-side code
-```
+
+The application is container-ready and can be deployed using the included Dockerfile if needed.
 
 ## Styling
 

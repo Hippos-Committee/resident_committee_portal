@@ -1,57 +1,57 @@
-# TOAS Hippos Resident Committee Portal
+# Resident Committee Portal
 
-Tämä on TOAS Hippos -asukkaille suunnattu palvelu, jonka kautta asukkaat voivat ottaa yhteyttä asukastoimikuntaan, hakea toimikunnan jäseneksi, ehdottaa tapahtumia tai pyytää hankintoja. Sivuston tavoitteena on lisätä asukastoimikunnan toiminnan läpinäkyvyyttä ja helpottaa osallistumista.
+A modern, production-ready portal designed for resident committees and tenant associations. This platform streamlines communication between residents and their representatives, providing tools for involvement, transparency, and administrative management.
 
-This is a portal for the residents of TOAS Hippos. Residents can use this platform to contact the tenant committee, apply for membership, suggest new events, or request purchases for common use. The goal of this site is to increase transparency and lower the barrier for resident involvement.
+The objective of this project is to provide a generic, easily deployable template that any resident committee can use to manage their community engagement.
 
 ---
 
-## Keskeiset Toiminnot / Key Features
+## Key Features
 
-- **Osallistu / Get Involved**: Integroidut lomakkeet asukastoimikuntaan hakemiseen, tapahtumaehdotuksiin ja hankintapyyntöihin.
-- **Tapahtumat / Events**: Ajantasainen näkymä tulevista tapahtumista (integroitu Google Calendariin).
-- **Avoimuus / Transparency**: Helppo pääsy asukastoimikunnan pöytäkirjoihin ja talousarvioon suoraan Google Drivesta.
-- **Yhteydenotto / Contact**: Selkeä kanava kysymyksille ja palautteelle.
-- **Ylläpito / Admin**: Toimikunnan jäsenille tarkoitettu hallintapaneeli hakemusten ja asioiden käsittelyyn.
+- **Resident Involvement**: Integrated forms for committee applications, event suggestions, and purchase requests.
+- **Event Management**: Up-to-date view of upcoming community events (integrated with Google Calendar).
+- **Transparency**: Easy access to meeting minutes, budgets, and public documents directly from Google Drive.
+- **Contact Channel**: A clear, centralized channel for resident questions and feedback.
+- **Admin Dashboard**: A dedicated management interface for committee members to track and process submissions.
 
-## Teknologia / Tech Stack
+## Tech Stack
 
 - **Framework**: [React Router 7](https://reactrouter.com/) (Vite)
 - **Styling**: [Tailwind CSS 4](https://tailwindcss.com/)
-- **Components**: [shadcn/ui](https://ui.shadcn.com/) pohjaiset komponentit
+- **Components**: [shadcn/ui](https://ui.shadcn.com/) based components
 - **Integrations**: Google Cloud API (Sheets, Drive, Calendar)
 - **Linting & Formatting**: [Biome](https://biomejs.dev/)
-- **Runtime**: [Bun](https://bun.sh/) (suositeltu)
+- **Runtime**: [Bun](https://bun.sh/) (Recommended)
 
-## Aloitus / Getting Started
+## Getting Started
 
-### Asennus / Installation
+### Installation
 
-Varmista että sinulla on [Bun](https://bun.sh/) asennettuna:
+Ensure you have [Bun](https://bun.sh/) installed:
 
 ```bash
 bun install
 ```
 
-### Kehitys / Development
+### Development
 
-Käynnistä kehityspalvelin:
+Start the development server:
 
 ```bash
 bun dev
 ```
 
-Sovellus on saatavilla osoitteessa `http://localhost:5173`.
+The application will be available at `http://localhost:5173`.
 
-### Tuotantoversio / Production
+### Production Build
 
-Rakenna optimoitu tuotantoversio:
+Create an optimized production build:
 
 ```bash
 bun run build
 ```
 
-The application is container-ready and can be deployed using the included Dockerfile if needed.
+The application is container-ready and can be deployed using the included Dockerfile.
 
 ## Styling
 

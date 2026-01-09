@@ -1,6 +1,7 @@
 import { Link } from "react-router";
 import { DynamicQR } from "~/components/dynamic-qr";
 import { cn } from "~/lib/utils";
+import { useInfoReel } from "~/contexts/info-reel-context";
 
 interface PageWrapperProps {
     children: React.ReactNode;
@@ -9,7 +10,7 @@ interface PageWrapperProps {
 
 export function PageWrapper({ children, className }: PageWrapperProps) {
     return (
-        <div className={cn("font-sans text-[#111418] dark:text-gray-100 min-h-screen flex flex-col overflow-x-hidden selection:bg-primary/30", className)}>
+        <div className={cn("font-sans text-[#111418] dark:text-gray-100 min-h-full flex flex-col overflow-x-hidden selection:bg-primary/30", className)}>
             <div className="flex-1 flex flex-col items-center justify-start">
                 {children}
             </div>
@@ -45,8 +46,8 @@ interface SplitLayoutProps {
 
 export function SplitLayout({ children, right, header, className }: SplitLayoutProps) {
     return (
-        <div className={cn("w-full max-w-[1200px] overflow-hidden flex flex-col lg:flex-row h-auto lg:min-h-[600px]", className)}>
-            <div className="lg:w-7/12 flex flex-col p-8 lg:p-12 relative max-h-[calc(100vh-20rem)]">
+        <div className={cn("w-full max-w-[1200px] overflow-hidden flex flex-col lg:flex-row h-auto", className)}>
+            <div className="lg:w-7/12 flex flex-col p-8 lg:p-12 relative">
                 {header && (
                     <PageHeader finnish={header.finnish} english={header.english} />
                 )}
@@ -71,6 +72,7 @@ interface QRPanelProps {
 export function QRPanel({ qrPath, qrUrl, title, description, children, className }: QRPanelProps) {
     const path = qrPath || qrUrl || "/";
     const isExternal = !!qrUrl;
+    const { isInfoReel } = useInfoReel();
 
     return (
         <div className={cn("lg:w-5/12 p-8 lg:p-12 flex flex-col items-center justify-start text-center", className)}>
@@ -93,28 +95,31 @@ export function QRPanel({ qrPath, qrUrl, title, description, children, className
 
                 {children}
 
-                {isExternal ? (
-                    <a
-                        href={qrUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex mt-8 items-center gap-2 text-sm font-bold text-gray-400 bg-gray-50 dark:bg-gray-800 px-5 py-2.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                    >
-                        <span className="material-symbols-outlined text-lg">
-                            open_in_new
-                        </span>
-                        <span>Avaa linkki / Open Link</span>
-                    </a>
-                ) : (
-                    <Link
-                        to={path}
-                        className="inline-flex mt-8 items-center gap-2 text-sm font-bold text-gray-400 bg-gray-50 dark:bg-gray-800 px-5 py-2.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                    >
-                        <span className="material-symbols-outlined text-lg">
-                            open_in_new
-                        </span>
-                        <span>Avaa linkki / Open Link</span>
-                    </Link>
+                {/* Hide Open Link button in info reel mode */}
+                {!isInfoReel && (
+                    isExternal ? (
+                        <a
+                            href={qrUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex mt-8 items-center gap-2 text-sm font-bold text-gray-400 bg-gray-50 dark:bg-gray-800 px-5 py-2.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                        >
+                            <span className="material-symbols-outlined text-lg">
+                                open_in_new
+                            </span>
+                            <span>Avaa linkki / Open Link</span>
+                        </a>
+                    ) : (
+                        <Link
+                            to={path}
+                            className="inline-flex mt-8 items-center gap-2 text-sm font-bold text-gray-400 bg-gray-50 dark:bg-gray-800 px-5 py-2.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                        >
+                            <span className="material-symbols-outlined text-lg">
+                                open_in_new
+                            </span>
+                            <span>Avaa linkki / Open Link</span>
+                        </Link>
+                    )
                 )}
             </div>
         </div>

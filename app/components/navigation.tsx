@@ -1,18 +1,25 @@
 import { Link, useLocation } from "react-router";
 import { cn } from "~/lib/utils";
+import { useInfoReel } from "~/contexts/info-reel-context";
 
 export function Navigation({ className, orientation = "vertical" }: { className?: string; orientation?: "vertical" | "horizontal" }) {
     const location = useLocation();
     const pathname = location.pathname;
+    const { isInfoReel } = useInfoReel();
 
-    const navItems = [
+    const allNavItems = [
         { path: "/", icon: "volunteer_activism", label: "Osallistu", subLabel: "Get Involved" },
         { path: "/events", icon: "event", label: "Tapahtumat", subLabel: "Events" },
         { path: "/budget", icon: "payments", label: "Budjetti", subLabel: "Budget" },
         { path: "/minutes", icon: "description", label: "Pöytäkirjat", subLabel: "Minutes" },
         { path: "/social", icon: "forum", label: "Some", subLabel: "Social" },
-        { path: "/auth/login", icon: "admin_panel_settings", label: "Admin", subLabel: "Login", isAdmin: true },
+        { path: "/auth/login", icon: "login", label: "Kirjaudu", subLabel: "Login", isAdmin: true },
     ];
+
+    // Hide login item in info reel mode
+    const navItems = isInfoReel
+        ? allNavItems.filter(item => !item.isAdmin)
+        : allNavItems;
 
     return (
         <nav className={cn(

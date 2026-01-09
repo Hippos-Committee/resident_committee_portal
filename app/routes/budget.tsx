@@ -1,6 +1,8 @@
-import { Link } from "react-router";
 import type { Route } from "./+types/budget";
-import { PageWrapper, SplitLayout, QRPanel, PageHeader } from "~/components/layout/page-layout";
+import { PageWrapper, SplitLayout, QRPanel, ActionButton } from "~/components/layout/page-layout";
+import { getBudgetInfo } from "~/lib/google.server";
+import { queryClient } from "~/lib/query-client";
+import { queryKeys, STALE_TIME } from "~/lib/query-config";
 
 export function meta() {
     return [
@@ -9,10 +11,13 @@ export function meta() {
     ];
 }
 
-import { getBudgetInfo } from "~/lib/google.server";
-
 export async function loader({ }: Route.LoaderArgs) {
-    const budgetData = await getBudgetInfo();
+    // Use ensureQueryData for client-side caching
+    const budgetData = await queryClient.ensureQueryData({
+        queryKey: queryKeys.budget,
+        queryFn: getBudgetInfo,
+        staleTime: STALE_TIME,
+    });
 
     return {
         remainingBudget: budgetData?.remaining || "--- €",
@@ -25,6 +30,7 @@ export async function loader({ }: Route.LoaderArgs) {
 export default function Budget({ loaderData }: Route.ComponentProps) {
     const { remainingBudget, totalBudget, lastUpdated, detailsUrl } = loaderData;
 
+    // QR Panel only shown in info reel mode
     const RightContent = (
         <QRPanel
             qrUrl={detailsUrl}
@@ -37,10 +43,22 @@ export default function Budget({ loaderData }: Route.ComponentProps) {
         />
     );
 
+    // Action button shown below content in regular mode
+    const FooterContent = (
+        <ActionButton
+            href={detailsUrl}
+            icon="table_chart"
+            labelFi="Katso erittely"
+            labelEn="See Breakdown"
+            external={true}
+        />
+    );
+
     return (
         <PageWrapper>
             <SplitLayout
                 right={RightContent}
+                footer={FooterContent}
                 header={{ finnish: "Budjetti", english: "Budget" }}
             >
                 <div className="space-y-8">
@@ -64,3 +82,4 @@ export default function Budget({ loaderData }: Route.ComponentProps) {
         </PageWrapper>
     );
 }
+

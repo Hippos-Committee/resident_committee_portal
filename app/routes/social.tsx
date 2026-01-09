@@ -1,9 +1,10 @@
-import { useState } from "react";
-import { Link } from "react-router";
 import { cn } from "~/lib/utils";
 import type { Route } from "./+types/social";
-import { PageWrapper, SplitLayout, QRPanel, PageHeader } from "~/components/layout/page-layout";
+import { PageWrapper, SplitLayout, QRPanel } from "~/components/layout/page-layout";
 import { getSocialChannels, type SocialChannel } from "~/lib/google.server";
+import { useLocalReel } from "~/contexts/info-reel-context";
+import { queryClient } from "~/lib/query-client";
+import { queryKeys, STALE_TIME } from "~/lib/query-config";
 
 export function meta() {
     return [
@@ -13,28 +14,46 @@ export function meta() {
 }
 
 export async function loader({ }: Route.LoaderArgs) {
-    const channels = await getSocialChannels();
+    // Use ensureQueryData for client-side caching
+    const channels = await queryClient.ensureQueryData({
+        queryKey: queryKeys.social,
+        queryFn: getSocialChannels,
+        staleTime: STALE_TIME,
+    });
     return { channels };
 }
 
 export default function Social({ loaderData }: Route.ComponentProps) {
     const { channels } = loaderData;
-    const [activeChannelId, setActiveChannelId] = useState<string>(channels[0].id);
 
-    const activeChannel = channels.find(c => c.id === activeChannelId) || channels[0];
+    // Use local reel for cycling through channels in info reel mode
+    // Duration per channel is auto-calculated from route duration / channel count
+    const { activeIndex, activeItem: activeChannel, isInfoReel, itemFillProgress, itemOpacity } = useLocalReel({
+        items: channels,
+    });
 
-    const RightContent = (
+    // Fallback to first channel if no active item
+    const displayChannel = activeChannel || channels[0];
+
+
+    // QR Panel only shown in info reel mode, cycling through channels
+    const RightContent = displayChannel ? (
         <QRPanel
-            qrUrl={activeChannel.url}
-            key={activeChannel.id}
+            qrUrl={displayChannel.url}
+            key={displayChannel.id}
+            opacity={itemOpacity}
             title={
-                <h2 className="text-3xl font-black text-gray-900 dark:text-white tracking-tight">
-                    Avaa kanava <br />
-                    <span className="text-lg text-gray-400 font-bold">Open Channel</span>
+                <h2
+                    className="text-3xl font-black tracking-tight uppercase"
+                    style={{
+                        color: `color-mix(in srgb, var(--foreground) ${itemOpacity * 100}%, transparent ${(1 - itemOpacity) * 100}%)`
+                    }}
+                >
+                    {displayChannel.name}
                 </h2>
             }
         />
-    );
+    ) : null;
 
     return (
         <PageWrapper>
@@ -42,45 +61,73 @@ export default function Social({ loaderData }: Route.ComponentProps) {
                 right={RightContent}
                 header={{ finnish: "Sosiaalinen Media", english: "Social Media" }}
             >
-                <div className="space-y-4">
-                    {channels.map((channel) => (
-                        <button
-                            key={channel.id}
-                            onClick={() => setActiveChannelId(channel.id)}
-                            className={cn(
-                                "w-full flex items-center gap-6 p-4 rounded-2xl border transition-all text-left group outline-none focus:ring-2 focus:ring-primary/20",
-                                activeChannelId === channel.id
-                                    ? "bg-white dark:bg-card border-primary dark:border-primary shadow-md scale-[1.02]"
-                                    : "bg-transparent border-transparent hover:bg-gray-50 dark:hover:bg-gray-800/50"
-                            )}
-                        >
-                            <div
+                <div className="space-y-2">
+                    {channels.map((channel, index) => {
+                        const isActive = isInfoReel && index === activeIndex;
+
+                        return (
+                            <a
+                                key={channel.id}
+                                href={channel.url}
+                                target="_blank"
+                                rel="noreferrer"
                                 className={cn(
-                                    "w-12 h-12 rounded-full flex items-center justify-center text-white shrink-0 transition-transform group-hover:scale-110",
-                                    channel.color
+                                    "relative w-full flex items-center gap-6 p-5 rounded-xl transition-all text-left group outline-none overflow-hidden",
+                                    !isActive && "bg-transparent hover:bg-gray-50 dark:hover:bg-gray-800/50"
                                 )}
                             >
-                                <span className="material-symbols-outlined text-2xl">
+                                {/* Animated filling background for active channel */}
+                                {isActive && (
+                                    <div
+                                        className="absolute inset-0 bg-primary/10 pointer-events-none"
+                                        style={{
+                                            clipPath: `inset(0 ${100 - itemFillProgress}% 0 0)`,
+                                            opacity: itemOpacity
+                                        }}
+                                    />
+                                )}
+
+                                <span
+                                    className={cn(
+                                        "relative material-symbols-outlined text-3xl transition-transform group-hover:scale-110",
+                                        !isActive && "text-gray-400 dark:text-gray-500"
+                                    )}
+                                    style={isActive ? {
+                                        color: `color-mix(in srgb, var(--primary) ${itemOpacity * 100}%, var(--muted-foreground) ${(1 - itemOpacity) * 100}%)`
+                                    } : undefined}
+                                >
                                     {channel.icon}
                                 </span>
-                            </div>
-                            <div>
-                                <h3 className={cn(
-                                    "text-lg font-bold leading-tight transition-colors",
-                                    activeChannelId === channel.id ? "text-primary" : "text-gray-900 dark:text-white"
-                                )}>
-                                    {channel.name}
-                                </h3>
-                            </div>
-                            {activeChannelId === channel.id && (
-                                <span className="material-symbols-outlined text-primary ml-auto animate-in fade-in slide-in-from-left-2">
-                                    chevron_right
+                                <div className="relative flex-1">
+                                    <h3
+                                        className={cn(
+                                            "text-2xl font-black leading-tight uppercase tracking-wide",
+                                            !isActive && "text-gray-900 dark:text-white group-hover:text-primary"
+                                        )}
+                                        style={isActive ? {
+                                            color: `color-mix(in srgb, var(--primary) ${itemOpacity * 100}%, var(--foreground) ${(1 - itemOpacity) * 100}%)`
+                                        } : undefined}
+                                    >
+                                        {channel.name}
+                                    </h3>
+                                </div>
+                                <span
+                                    className={cn(
+                                        "relative material-symbols-outlined ml-auto text-2xl",
+                                        !isActive && "text-gray-300 dark:text-gray-600 group-hover:text-primary group-hover:translate-x-1"
+                                    )}
+                                    style={isActive ? {
+                                        color: `color-mix(in srgb, var(--primary) ${itemOpacity * 100}%, var(--muted-foreground) ${(1 - itemOpacity) * 100}%)`
+                                    } : undefined}
+                                >
+                                    open_in_new
                                 </span>
-                            )}
-                        </button>
-                    ))}
+                            </a>
+                        );
+                    })}
                 </div>
             </SplitLayout>
         </PageWrapper>
     );
 }
+

@@ -120,11 +120,31 @@ This project integrates with Google Calendar, Drive, and Sheets to display dynam
     - Calendar: Make public (for event display)
     - Public folder: Share with "Anyone with the link" (Viewer)
     - Submissions sheet: Share with service account email (Editor)
-
+ 
+---
+ 
+## Performance & Caching
+ 
+To minimize network overhead and ensure a smooth experience (especially in Info Reel mode), the portal implements two layers of caching:
+ 
+### 1. Server-Side Caching
+The backend caches data from Google APIs to avoid hitting rate limits and to speed up page loads.
+- **Location**: `app/lib/cache.server.ts`
+- **Duration**: Default is **3 hours**.
+ 
+### 2. Client-Side Caching (TanStack Query)
+The frontend uses [TanStack Query](https://tanstack.com/query/latest) to store fetched data in memory. This prevents redundant network requests during route transitions.
+- **Location**: `app/lib/query-config.ts`
+- **Default Stale Time**: **10 minutes**.
+- **Behavior**: While data is fresh, navigating between pages is instantaneous and makes **zero network requests** to the backend.
+ 
+#### Configuration
+You can adjust how frequently the client refetches data by modifying `STALE_TIME` in `app/lib/query-config.ts`.
+ 
 ---
  
 ## Display Modes
-
+ 
 ### Info Reel (Kiosk Mode)
 
 The application includes an "Info Reel" mode designed for public displays or kiosks. In this mode:

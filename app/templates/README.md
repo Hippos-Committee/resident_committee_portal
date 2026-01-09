@@ -34,3 +34,35 @@ This file is a template for the yearly budget.
 ## 2. Minutes (`minutes_convention.md`)
 
 Refer to `minutes_convention.md` for details on how to name your PDF files inside the `minutes` folder of the current year.
+
+## 3. Social Media (`some.csv`)
+
+This file is a template for social media channels displayed on the "Social" page.
+
+### Instructions:
+1.  In the **Root Folder** (not inside a year folder), create a **New Google Sheet** named `some`.
+2.  **Import** (`File > Import`) the `some.csv` file into this sheet.
+3.  **Fill in the values**:
+    *   **Column A (name)**: Display name (e.g., "Telegram", "Instagram")
+    *   **Column B (icon)**: Material symbol name (e.g., "send", "photo_camera")
+    *   **Column C (url)**: Full URL to the social media page
+    *   **Column D (color)**: Tailwind CSS background class (e.g., "bg-blue-500")
+4.  The application will automatically find this file (`some`) in the root folder.
+
+### Common Icon Names
+| Platform | Icon Name |
+|----------|-----------|
+| Telegram | `send` |
+| Instagram | `photo_camera` |
+| Facebook | `thumb_up` |
+| X/Twitter | `alternate_email` |
+| TikTok | `music_note` |
+| YouTube | `play_circle` |
+| LinkedIn | `work` |
+| Discord | `forum` |
+| WhatsApp | `chat` |
+| Email | `mail` |
+| Website | `language` |
+| Generic | `link` |
+
+> **Tip**: Browse all icons at [Material Symbols](https://fonts.google.com/icons)

@@ -98,9 +98,14 @@ export async function getCalendarEvents() {
 
         return items;
     } catch (error) {
-        console.error("[getCalendarEvents] Fetch error:", error);
+        console.error("Calendar fetch error:", error);
         return [];
     }
+}
+
+export function getCalendarUrl() {
+    if (!config.calendarId) return "";
+    return `https://calendar.google.com/calendar/embed?src=${encodeURIComponent(config.calendarId)}`;
 }
 
 // Helper to get the Current Year Folder ID (from PUBLIC root)
@@ -119,7 +124,7 @@ async function getCurrentYearFolder() {
 export async function getMinutesFiles() {
     // Check cache first
     const cached = getCached<{ files: any[]; folderUrl: string }>(CACHE_KEYS.MINUTES, CACHE_TTL.MINUTES);
-    if (cached !== null) {
+    if (cached !== null && cached.folderUrl && cached.folderUrl !== "#") {
         return cached;
     }
 
@@ -154,8 +159,8 @@ export async function getMinutesFiles() {
 
 export async function getBudgetInfo() {
     // Check cache first
-    const cached = getCached<{ remaining: string; total: string; lastUpdated: string }>(CACHE_KEYS.BUDGET, CACHE_TTL.BUDGET);
-    if (cached !== null) {
+    const cached = getCached<{ remaining: string; total: string; lastUpdated: string; detailsUrl: string }>(CACHE_KEYS.BUDGET, CACHE_TTL.BUDGET);
+    if (cached !== null && cached.detailsUrl) {
         return cached;
     }
 
@@ -185,8 +190,11 @@ export async function getBudgetInfo() {
         const result = {
             remaining: values[0]?.[0] || "--- €",
             total: values[1]?.[0] || "--- €",
-            lastUpdated: values[2]?.[0] || ""
+            lastUpdated: values[2]?.[0] || "",
+            detailsUrl: budgetFile.webViewLink || `https://docs.google.com/spreadsheets/d/${budgetFile.id}`
         };
+
+        console.log(`[getBudgetInfo] Discovered sheet URL: ${result.detailsUrl}`);
 
         // Cache the result
         setCache(CACHE_KEYS.BUDGET, result);
@@ -195,6 +203,88 @@ export async function getBudgetInfo() {
     } catch (error) {
         console.error("Budget fetch error:", error);
         return null;
+    }
+}
+
+// ============================================
+// SOCIAL CHANNELS (from "some" sheet in root)
+// ============================================
+
+export interface SocialChannel {
+    id: string;
+    name: string;
+    icon: string;
+    url: string;
+    color: string;
+}
+
+export async function getSocialChannels(): Promise<SocialChannel[]> {
+    // Check cache first
+    const cached = getCached<SocialChannel[]>(CACHE_KEYS.SOCIAL_CHANNELS, CACHE_TTL.SOCIAL_CHANNELS);
+    if (cached !== null && cached.length > 0) {
+        return cached;
+    }
+
+    if (!config.publicRootFolderId) {
+        console.log("[getSocialChannels] No publicRootFolderId configured");
+        return [];
+    }
+
+    // Look for "some" spreadsheet in root folder (not inside a year folder)
+    let someFile = await findChildByName(config.publicRootFolderId, "some", "application/vnd.google-apps.spreadsheet");
+
+    // Fallback: maybe they named it "some.csv" but it IS a spreadsheet
+    if (!someFile) {
+        someFile = await findChildByName(config.publicRootFolderId, "some.csv", "application/vnd.google-apps.spreadsheet");
+    }
+
+    if (!someFile) {
+        console.log("[getSocialChannels] Sheet 'some' not found in root folder");
+        return [];
+    }
+
+    // Fetch data starting from row 2 (skip header), columns A:D (name, icon, url, color)
+    const range = "A2:D";
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${someFile.id}/values/${range}?key=${config.apiKey}`;
+
+    try {
+        const res = await fetch(url);
+        if (!res.ok) {
+            console.log(`[getSocialChannels] API Error: ${res.status}`);
+            return [];
+        }
+        const data = await res.json();
+        const rows = data.values;
+
+        if (!rows || rows.length === 0) {
+            console.log("[getSocialChannels] No data rows found");
+            return [];
+        }
+
+        const channels: SocialChannel[] = rows
+            .filter((row: string[]) => row[0] && row[2]) // Must have name and url at minimum
+            .map((row: string[], index: number) => ({
+                id: row[0]?.toLowerCase().replace(/\s+/g, "-") || `channel-${index}`,
+                name: row[0] || "",
+                icon: row[1] || "link",
+                url: row[2] || "",
+                color: row[3] || "bg-gray-500",
+            }));
+
+        if (channels.length === 0) {
+            console.log("[getSocialChannels] No valid channels parsed");
+            return [];
+        }
+
+        console.log(`[getSocialChannels] Loaded ${channels.length} channels from sheet`);
+
+        // Cache the result
+        setCache(CACHE_KEYS.SOCIAL_CHANNELS, channels);
+
+        return channels;
+    } catch (error) {
+        console.error("[getSocialChannels] Error:", error);
+        return [];
     }
 }
 

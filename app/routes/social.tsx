@@ -3,6 +3,7 @@ import { Link } from "react-router";
 import { cn } from "~/lib/utils";
 import type { Route } from "./+types/social";
 import { PageWrapper, SplitLayout, QRPanel, PageHeader } from "~/components/layout/page-layout";
+import { getSocialChannels, type SocialChannel } from "~/lib/google.server";
 
 export function meta() {
     return [
@@ -11,40 +12,9 @@ export function meta() {
     ];
 }
 
-interface SocialChannel {
-    id: string;
-    name: string;
-    icon: string; // Material symbol name
-    url: string;
-    color: string;
-}
-
-export function loader({ }: Route.LoaderArgs) {
-    return {
-        channels: [
-            {
-                id: "telegram",
-                name: "Telegram",
-                icon: "send", // approximations for standardized icons
-                url: "https://t.me/toashippos",
-                color: "bg-blue-500",
-            },
-            {
-                id: "instagram",
-                name: "Instagram",
-                icon: "photo_camera", // approximations
-                url: "https://instagram.com/toashippos",
-                color: "bg-pink-600",
-            },
-            {
-                id: "facebook",
-                name: "Facebook",
-                icon: "thumb_up", // approximations
-                url: "https://facebook.com/toashippos",
-                color: "bg-blue-700",
-            },
-        ] as SocialChannel[],
-    };
+export async function loader({ }: Route.LoaderArgs) {
+    const channels = await getSocialChannels();
+    return { channels };
 }
 
 export default function Social({ loaderData }: Route.ComponentProps) {

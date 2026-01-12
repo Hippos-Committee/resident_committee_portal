@@ -3,12 +3,13 @@ import { PageWrapper, SplitLayout, QRPanel, ActionButton } from "~/components/la
 import { getCalendarEvents, getCalendarUrl } from "~/lib/google.server";
 import { queryClient } from "~/lib/query-client";
 import { queryKeys, STALE_TIME } from "~/lib/query-config";
+import { SITE_CONFIG } from "~/lib/config.server";
 
-export function meta() {
-    return [
-        { title: "Toas Hippos - Tapahtumat / Events" },
-        { name: "description", content: "Tulevat tapahtumat / Upcoming events at Toas Hippos" },
-    ];
+export function meta({ data }: Route.MetaArgs) {
+	return [
+		{ title: `${data?.siteConfig?.name || "Portal"} - Tapahtumat / Events` },
+		{ name: "description", content: "Tulevat tapahtumat / Upcoming events" },
+	];
 }
 
 interface Event {
@@ -85,6 +86,7 @@ export async function loader({ }: Route.LoaderArgs) {
     }));
 
     return {
+        siteConfig: SITE_CONFIG,
         groupedMonths,
         calendarUrl
     };

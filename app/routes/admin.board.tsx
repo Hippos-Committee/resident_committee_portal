@@ -2,25 +2,27 @@ import type { Route } from "./+types/admin.board";
 import { Form, useLoaderData } from "react-router";
 import { requireAdmin } from "~/lib/auth.server";
 import { getSubmissions, updateSubmissionStatus, type Submission } from "~/lib/google.server";
+import { SITE_CONFIG } from "~/lib/config.server";
 import { SUBMISSION_STATUSES } from "~/lib/constants";
 import { PageWrapper } from "~/components/layout/page-layout";
 import { cn } from "~/lib/utils";
 
-export function meta() {
-    return [
-        { title: "Toas Hippos - Admin Board" },
-        { name: "robots", content: "noindex" },
-    ];
+export function meta({ data }: Route.MetaArgs) {
+	return [
+		{ title: `${data?.siteConfig?.name || "Portal"} - Hallintapaneeli / Admin` },
+		{ name: "robots", content: "noindex" },
+	];
 }
 
 export async function loader({ request }: Route.LoaderArgs) {
-    const session = await requireAdmin(request);
-    const submissions = await getSubmissions();
+	const session = await requireAdmin(request);
+	const submissions = await getSubmissions();
 
-    return {
-        session,
-        submissions: submissions.reverse(), // Latest first
-    };
+	return {
+		siteConfig: SITE_CONFIG,
+		session,
+		submissions: submissions.reverse(),
+	};
 }
 
 export async function action({ request }: Route.ActionArgs) {
@@ -84,6 +86,22 @@ export default function AdminBoard({ loaderData }: Route.ComponentProps) {
                             Kirjaudu ulos / Logout
                         </a>
                     </div>
+                </div>
+
+                {/* Navigation */}
+                <div className="flex gap-4 mb-8">
+                    <a
+                        href="/admin/board"
+                        className="px-4 py-2 rounded-lg text-sm font-medium bg-primary text-white"
+                    >
+                        Yhteydenotot / Submissions
+                    </a>
+                    <a
+                        href="/admin/users"
+                        className="px-4 py-2 rounded-lg text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                    >
+                        Käyttäjät / Users
+                    </a>
                 </div>
 
                 {/* Stats */}

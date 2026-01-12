@@ -5,12 +5,17 @@ import { cn } from "~/lib/utils";
 import { Button } from "~/components/ui/button";
 import { useState, useEffect } from "react";
 import { saveFormSubmission } from "~/lib/google.server";
+import { SITE_CONFIG } from "~/lib/config.server";
 
-export function meta() {
-    return [
-        { title: "Toas Hippos - Ota yhteyttä / Contact" },
-        { name: "description", content: "Ota yhteyttä Hippoksen asukastoimikuntaan / Contact Hippos Tenant Committee" },
-    ];
+export function meta({ data }: Route.MetaArgs) {
+	return [
+		{ title: `${data?.siteConfig?.name || "Portal"} - Ota yhteyttä / Contact` },
+		{ name: "description", content: "Ota yhteyttä asukastoimikuntaan / Contact the Tenant Committee" },
+	];
+}
+
+export function loader() {
+	return { siteConfig: SITE_CONFIG };
 }
 
 // Form types matching the home page options

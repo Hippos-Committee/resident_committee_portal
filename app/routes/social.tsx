@@ -5,22 +5,22 @@ import { getSocialChannels, type SocialChannel } from "~/lib/google.server";
 import { useLocalReel } from "~/contexts/info-reel-context";
 import { queryClient } from "~/lib/query-client";
 import { queryKeys, STALE_TIME } from "~/lib/query-config";
+import { SITE_CONFIG } from "~/lib/config.server";
 
-export function meta() {
-    return [
-        { title: "Toas Hippos - Some / Social" },
-        { name: "description", content: "Seuraa meitä somessa / Follow us on social media" },
-    ];
+export function meta({ data }: Route.MetaArgs) {
+	return [
+		{ title: `${data?.siteConfig?.name || "Portal"} - Some / Social` },
+		{ name: "description", content: "Seuraa meitä somessa / Follow us on social media" },
+	];
 }
 
-export async function loader({ }: Route.LoaderArgs) {
-    // Use ensureQueryData for client-side caching
-    const channels = await queryClient.ensureQueryData({
-        queryKey: queryKeys.social,
-        queryFn: getSocialChannels,
-        staleTime: STALE_TIME,
-    });
-    return { channels };
+export async function loader({}: Route.LoaderArgs) {
+	const channels = await queryClient.ensureQueryData({
+		queryKey: queryKeys.social,
+		queryFn: getSocialChannels,
+		staleTime: STALE_TIME,
+	});
+	return { siteConfig: SITE_CONFIG, channels };
 }
 
 export default function Social({ loaderData }: Route.ComponentProps) {

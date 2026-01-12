@@ -3,28 +3,29 @@ import { PageWrapper, SplitLayout, QRPanel, ActionButton } from "~/components/la
 import { getBudgetInfo } from "~/lib/google.server";
 import { queryClient } from "~/lib/query-client";
 import { queryKeys, STALE_TIME } from "~/lib/query-config";
+import { SITE_CONFIG } from "~/lib/config.server";
 
-export function meta() {
-    return [
-        { title: "Toas Hippos - Budjetti / Budget" },
-        { name: "description", content: "Toimikunnan budjetti / Tenant Committee Budget" },
-    ];
+export function meta({ data }: Route.MetaArgs) {
+	return [
+		{ title: `${data?.siteConfig?.name || "Portal"} - Budjetti / Budget` },
+		{ name: "description", content: "Toimikunnan budjetti / Tenant Committee Budget" },
+	];
 }
 
-export async function loader({ }: Route.LoaderArgs) {
-    // Use ensureQueryData for client-side caching
-    const budgetData = await queryClient.ensureQueryData({
-        queryKey: queryKeys.budget,
-        queryFn: getBudgetInfo,
-        staleTime: STALE_TIME,
-    });
+export async function loader({}: Route.LoaderArgs) {
+	const budgetData = await queryClient.ensureQueryData({
+		queryKey: queryKeys.budget,
+		queryFn: getBudgetInfo,
+		staleTime: STALE_TIME,
+	});
 
-    return {
-        remainingBudget: budgetData?.remaining || "--- €",
-        totalBudget: budgetData?.total || "--- €",
-        lastUpdated: budgetData?.lastUpdated || "",
-        detailsUrl: budgetData?.detailsUrl || "#"
-    };
+	return {
+		siteConfig: SITE_CONFIG,
+		remainingBudget: budgetData?.remaining || "--- €",
+		totalBudget: budgetData?.total || "--- €",
+		lastUpdated: budgetData?.lastUpdated || "",
+		detailsUrl: budgetData?.detailsUrl || "#",
+	};
 }
 
 export default function Budget({ loaderData }: Route.ComponentProps) {

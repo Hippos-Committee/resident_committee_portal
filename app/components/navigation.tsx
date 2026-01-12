@@ -2,7 +2,19 @@ import { Link, useLocation } from "react-router";
 import { cn } from "~/lib/utils";
 import { useInfoReel } from "~/contexts/info-reel-context";
 
-export function Navigation({ className, orientation = "vertical" }: { className?: string; orientation?: "vertical" | "horizontal" }) {
+interface UserInfo {
+    email: string;
+    name?: string;
+    isAdmin: boolean;
+}
+
+interface NavigationProps {
+    className?: string;
+    orientation?: "vertical" | "horizontal";
+    user?: UserInfo | null;
+}
+
+export function Navigation({ className, orientation = "vertical", user }: NavigationProps) {
     const location = useLocation();
     const pathname = location.pathname;
     const { isInfoReel, fillProgress, opacity } = useInfoReel();
@@ -12,14 +24,27 @@ export function Navigation({ className, orientation = "vertical" }: { className?
         { path: "/events", icon: "event", label: "Tapahtumat", subLabel: "Events" },
         { path: "/budget", icon: "payments", label: "Budjetti", subLabel: "Budget" },
         { path: "/minutes", icon: "description", label: "Pöytäkirjat", subLabel: "Minutes" },
+        { path: "/inventory", icon: "inventory_2", label: "Tavaraluettelo", subLabel: "Inventory" },
         { path: "/social", icon: "forum", label: "Some", subLabel: "Social" },
-        { path: "/auth/login", icon: "login", label: "Kirjaudu", subLabel: "Login", isAdmin: true },
-    ];
+        // Auth items - shown conditionally
+        { path: "/auth/login", icon: "login", label: "Kirjaudu", subLabel: "Login", showWhen: "logged-out" },
+        { path: "/auth/logout", icon: "logout", label: "Ulos", subLabel: "Logout", showWhen: "logged-in" },
+        // Admin items
+        { path: "/admin/board", icon: "dashboard", label: "Hallinta", subLabel: "Admin", showWhen: "admin" },
+    ] as const;
 
-    // Hide login item in info reel mode
-    const navItems = isInfoReel
-        ? allNavItems.filter(item => !item.isAdmin)
-        : allNavItems;
+    // Filter nav items based on auth state and info reel mode
+    const navItems = allNavItems.filter(item => {
+        if (isInfoReel && 'showWhen' in item) return false;
+        if (!('showWhen' in item)) return true;
+        
+        switch (item.showWhen) {
+            case "logged-out": return !user;
+            case "logged-in": return !!user;
+            case "admin": return user?.isAdmin;
+            default: return true;
+        }
+    });
 
     return (
         <nav className={cn(

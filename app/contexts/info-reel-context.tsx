@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router";
 
 // Route configuration with optional per-route durations
@@ -20,6 +20,7 @@ const REEL_ROUTES: RouteConfig[] = [
     { path: "/events" },
     { path: "/budget" },
     { path: "/minutes" },
+    { path: "/inventory" },
     { path: "/social", duration: 16000 }, // Longer for social to cycle through channels
 ];
 
@@ -144,6 +145,11 @@ export function InfoReelProvider({ children }: { children: ReactNode }) {
     const [fillProgress, setFillProgress] = useState(0);
     const [opacity, setOpacity] = useState(1);
 
+    // Track if we're currently navigating to prevent double-navigation
+    const isNavigatingRef = useRef(false);
+    // Track the current path to detect actual route changes
+    const currentPathRef = useRef(location.pathname);
+
     // Get current route config
     const getCurrentRouteConfig = useCallback((): RouteConfig | undefined => {
         return REEL_ROUTES.find(r => r.path === location.pathname);
@@ -157,10 +163,23 @@ export function InfoReelProvider({ children }: { children: ReactNode }) {
     const currentRouteDuration = getCurrentRouteConfig()?.duration ?? DEFAULT_REEL_DURATION;
 
     const navigateToNextRoute = useCallback(() => {
+        // Prevent double-navigation
+        if (isNavigatingRef.current) return;
+        isNavigatingRef.current = true;
+
         const currentIndex = getCurrentRouteIndex();
         const nextIndex = (currentIndex + 1) % REEL_ROUTES.length;
-        navigate(`${REEL_ROUTES[nextIndex].path}?view=infoReel`);
+        // Use replace to avoid building up browser history
+        navigate(`${REEL_ROUTES[nextIndex].path}?view=infoReel`, { replace: true });
     }, [getCurrentRouteIndex, navigate]);
+
+    // Reset navigation flag when route actually changes
+    useEffect(() => {
+        if (currentPathRef.current !== location.pathname) {
+            currentPathRef.current = location.pathname;
+            isNavigatingRef.current = false;
+        }
+    }, [location.pathname]);
 
     useEffect(() => {
         if (!isInfoReel) {

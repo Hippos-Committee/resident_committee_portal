@@ -3,29 +3,29 @@ import { PageWrapper, SplitLayout, QRPanel } from "~/components/layout/page-layo
 import { getMinutesByYear, type MinutesByYear } from "~/lib/google.server";
 import { queryClient } from "~/lib/query-client";
 import { queryKeys, STALE_TIME } from "~/lib/query-config";
+import { SITE_CONFIG } from "~/lib/config.server";
 
-export function meta() {
-    return [
-        { title: "Toas Hippos - Pöytäkirjat / Minutes" },
-        { name: "description", content: "Toimikunnan kokouspöytäkirjat / Tenant Committee Meeting Minutes" },
-    ];
+export function meta({ data }: Route.MetaArgs) {
+	return [
+		{ title: `${data?.siteConfig?.name || "Portal"} - Pöytäkirjat / Minutes` },
+		{ name: "description", content: "Toimikunnan kokouspöytäkirjat / Tenant Committee Meeting Minutes" },
+	];
 }
 
-export async function loader({ }: Route.LoaderArgs) {
-    // Use ensureQueryData for client-side caching
-    const minutesByYear = await queryClient.ensureQueryData({
-        queryKey: queryKeys.minutes,
-        queryFn: getMinutesByYear,
-        staleTime: STALE_TIME,
-    });
+export async function loader({}: Route.LoaderArgs) {
+	const minutesByYear = await queryClient.ensureQueryData({
+		queryKey: queryKeys.minutes,
+		queryFn: getMinutesByYear,
+		staleTime: STALE_TIME,
+	});
 
-    // Get the archive URL from the most recent year with files
-    const archiveUrl = minutesByYear.find(y => y.files.length > 0)?.folderUrl || "#";
+	const archiveUrl = minutesByYear.find((y) => y.files.length > 0)?.folderUrl || "#";
 
-    return {
-        minutesByYear,
-        archiveUrl
-    };
+	return {
+		siteConfig: SITE_CONFIG,
+		minutesByYear,
+		archiveUrl,
+	};
 }
 
 export default function Minutes({ loaderData }: Route.ComponentProps) {

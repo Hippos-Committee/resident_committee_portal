@@ -5,10 +5,25 @@ import {
   Outlet,
   Scripts,
   ScrollRestoration,
+  useLoaderData,
 } from "react-router";
 
 import type { Route } from "./+types/root";
 import "./app.css";
+import { getSession, isAdmin } from "~/lib/auth.server";
+import { SITE_CONFIG } from "~/lib/config.server";
+
+export async function loader({ request }: Route.LoaderArgs) {
+  const session = await getSession(request);
+  return {
+    user: session ? {
+      email: session.email,
+      name: session.name,
+      isAdmin: isAdmin(session.email),
+    } : null,
+    siteConfig: SITE_CONFIG,
+  };
+}
 
 export const links: Route.LinksFunction = () => [
   { rel: "preconnect", href: "https://fonts.googleapis.com" },
@@ -23,7 +38,7 @@ export const links: Route.LinksFunction = () => [
   },
   {
     rel: "stylesheet",
-    href: "https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap",
+    href: "https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=block",
   },
 ];
 
@@ -66,6 +81,8 @@ function ContentFader({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
+  const { user, siteConfig } = useLoaderData<typeof loader>();
+
   return (
     <QueryClientProvider client={queryClient}>
       <InfoReelProvider>
@@ -74,7 +91,7 @@ export default function App() {
             <header className="flex items-center justify-center px-4 pb-2">
               <div className="flex items-center justify-center gap-2 sm:gap-4 md:gap-8 mt-1 sm:mt-2 md:mt-4">
                 <span className="text-xl sm:text-3xl md:text-7xl font-black tracking-tighter uppercase text-gray-900 dark:text-white leading-none">
-                  HIPPOS
+                  {siteConfig.shortName || siteConfig.name}
                 </span>
                 <div className="flex flex-col items-start justify-center h-full text-gray-900 dark:text-white uppercase font-black tracking-widest leading-[0.85] border-l-2 md:border-l-4 border-primary pl-3 sm:pl-4 md:pl-10 py-1 md:py-2">
                   <span className="text-sm sm:text-2xl md:text-3xl">Asukastoimikunta</span>
@@ -84,7 +101,7 @@ export default function App() {
             </header>
 
             <nav className="pb-1 sm:pb-2 md:pb-4">
-              <Navigation orientation="horizontal" />
+              <Navigation orientation="horizontal" user={user} />
             </nav>
 
             {/* Info Reel Progress Bar - replaces border-bottom in info reel mode */}

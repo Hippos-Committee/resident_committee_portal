@@ -281,24 +281,53 @@ export async function getBudgetInfo() {
 
     if (!budgetFile) return null;
 
-    const range = "B2:B4";
+    // Fetch transaction rows: Receipt, Date, Description, Person, Amount, Category
+    // Stop at "---" marker row (summary section)
+    const range = "A2:E";
     const url = `https://sheets.googleapis.com/v4/spreadsheets/${budgetFile.id}/values/${range}?key=${config.apiKey}`;
 
     try {
         const res = await fetch(url);
         if (!res.ok) return null;
         const data = await res.json();
-        const values = data.values;
-        if (!values) return null;
+        const rows = data.values || [];
+
+        let totalIncome = 0;
+        let totalExpenses = 0;
+        let latestDate = "";
+
+        for (const row of rows) {
+            // Stop at marker row (starts with "---")
+            if (row[0]?.toString().startsWith("---")) break;
+
+            // Skip empty rows
+            if (!row[0] || !row[4]) continue;
+
+            const amount = parseFloat(row[4]?.toString().replace(/−/g, "-").replace(",", ".").replace(/[^\d.-]/g, "")) || 0;
+            const date = row[1]?.toString() || "";
+
+            if (amount > 0) {
+                totalIncome += amount;
+            } else {
+                totalExpenses += Math.abs(amount);
+            }
+
+            // Track latest date (simple string comparison works for DD.MM.YYYY if sorted)
+            if (date && date > latestDate) {
+                latestDate = date;
+            }
+        }
+
+        const remaining = totalIncome - totalExpenses;
 
         const result = {
-            remaining: values[0]?.[0] || "--- €",
-            total: values[1]?.[0] || "--- €",
-            lastUpdated: values[2]?.[0] || "",
+            remaining: `${remaining.toFixed(2).replace(".", ",")} €`,
+            total: `${totalIncome.toFixed(2).replace(".", ",")} €`,
+            lastUpdated: latestDate,
             detailsUrl: budgetFile.webViewLink || `https://docs.google.com/spreadsheets/d/${budgetFile.id}`
         };
 
-        console.log(`[getBudgetInfo] Discovered sheet URL: ${result.detailsUrl}`);
+        console.log(`[getBudgetInfo] Calculated from ${rows.length} rows: remaining=${result.remaining}, total=${result.total}`);
 
         // Cache the result
         setCache(CACHE_KEYS.BUDGET, result);
@@ -490,6 +519,7 @@ interface FormSubmission {
     type: string;
     name: string;
     email: string;
+    apartmentNumber: string;
     message: string;
 }
 
@@ -569,9 +599,10 @@ export async function saveFormSubmission(submission: FormSubmission): Promise<bo
     const timestamp = new Date().toISOString();
     // Status options: "Uusi / New", "Käsittelyssä / In Progress", "Hyväksytty / Approved", "Hylätty / Rejected", "Valmis / Done"
     const defaultStatus = "Uusi / New";
-    const row = [timestamp, submission.type, submission.name, submission.email, submission.message, defaultStatus];
+    // Column order: Timestamp, Type, Name, Email, Apartment, Message, Status
+    const row = [timestamp, submission.type, submission.name, submission.email, submission.apartmentNumber, submission.message, defaultStatus];
 
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${config.submissionsSheetId}/values/A:F:append?valueInputOption=USER_ENTERED`;
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${config.submissionsSheetId}/values/A:G:append?valueInputOption=USER_ENTERED`;
 
     try {
         const res = await fetch(url, {

@@ -1,12 +1,4 @@
-Receipt,Date,Description,Person,Amount,Category
-1,01.01.2025,TOAS rahat,TOAS,1834.00,Tulot
-2,05.12.2025,Kokouseväät,Mikko,-20.93,Tapahtumat
-3,06.04.2025,Ikea Keittiövälineet,Niko,-113.01,Hankinnat
-
----,SUMMARY (below is optional - app calculates from transactions above),,,,
-,Tulot yhteensä / Total Income,,,=SUMIF(E2:E999,">0"),
-,Tulot yhteensä (FI) / Total Income (FI),,,=SUMMA.JOS(E2:E999;">0"),
-,Menot yhteensä / Total Expenses,,,=SUMIF(E2:E999,"<0"),
-,Menot yhteensä (FI) / Total Expenses (FI),,,=SUMMA.JOS(E2:E999;"<0"),
-,Jäljellä / Remaining,,,=SUM(E2:E999),
-,Jäljellä (FI) / Remaining (FI),,,=SUMMA(E2:E999),
+Receipt,Date,Description,Person,Amount,Category,,SUMMARY,
+1,01.01.2025,TOAS rahat,TOAS,"1834,00",Tulot,,Tulot / Income,"=SUMMA.JOS(E:E;"">0"";E:E)"
+2,05.12.2025,Kokouseväät,Mikko,"-20,93",Tapahtumat,,Menot / Expenses,"=SUMMA.JOS(E:E;""<0"";E:E)"
+3,06.04.2025,Ikea Keittiövälineet,Niko,"-113,01",Hankinnat,,Jäljellä / Remaining,=SUMMA(E:E)

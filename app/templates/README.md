@@ -20,16 +20,23 @@ ROOT_FOLDER/
 
 ## 1. Budget (`budget.csv`)
 
-This file is a template for the yearly budget.
+This file is a template for the yearly budget using a **transaction ledger** format.
 
 ### Instructions:
 1.  Inside the current year's folder (e.g., `2026`), create a **New Google Sheet** named `budget`.
 2.  **Import** (`File > Import`) the `budget.csv` file into this sheet.
-3.  **Fill in the values** in Column B:
-    *   **B2**: Remaining Budget
-    *   **B3**: Total Budget
-    *   **B4**: Last Updated Date
-4.  The application will automatically find this file (`budget`) inside the year folder (`2026`).
+3.  **Add transactions** with these columns:
+    *   **Column A (Receipt)**: Receipt number (1, 2, 3...)
+    *   **Column B (Date)**: Transaction date (DD.MM.YYYY)
+    *   **Column C (Description)**: What was purchased/received
+    *   **Column D (Person)**: Who made the purchase or income source
+    *   **Column E (Amount)**: Amount in euros (**positive** = income, **negative** = expense)
+    *   **Column F (Category)**: Category (e.g., "Tulot", "Tapahtumat", "Hankinnat")
+4.  The application **automatically calculates** remaining budget and totals from the transactions.
+5.  **Optional**: Below the `---` marker row, you can add your own SUM formulas to verify totals.
+
+> **Note**: The app stops reading at rows starting with `---`, so anything below that marker is ignored.
+
 
 ## 2. Minutes (`minutes_convention.md`)
 

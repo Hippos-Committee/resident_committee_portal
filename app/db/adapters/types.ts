@@ -1,4 +1,4 @@
-import type { User, NewUser, InventoryItem, NewInventoryItem, Purchase, NewPurchase, Budget, NewBudget, Transaction, NewTransaction } from "../schema";
+import type { User, NewUser, InventoryItem, NewInventoryItem, Purchase, NewPurchase, Budget, NewBudget, Transaction, NewTransaction, Submission, NewSubmission, SubmissionStatus, SocialLink, NewSocialLink } from "../schema";
 
 /**
  * Database adapter interface
@@ -42,4 +42,18 @@ export interface DatabaseAdapter {
 	createTransaction(transaction: NewTransaction): Promise<Transaction>;
 	updateTransaction(id: string, data: Partial<Omit<NewTransaction, "id">>): Promise<Transaction | null>;
 	deleteTransaction(id: string): Promise<boolean>;
+
+	// ==================== Submission Methods ====================
+	getSubmissions(): Promise<Submission[]>;
+	getSubmissionById(id: string): Promise<Submission | null>;
+	createSubmission(submission: NewSubmission): Promise<Submission>;
+	updateSubmissionStatus(id: string, status: SubmissionStatus): Promise<Submission | null>;
+	deleteSubmission(id: string): Promise<boolean>;
+
+	// ==================== Social Link Methods ====================
+	getSocialLinks(): Promise<SocialLink[]>;
+	getSocialLinkById(id: string): Promise<SocialLink | null>;
+	createSocialLink(link: NewSocialLink): Promise<SocialLink>;
+	updateSocialLink(id: string, data: Partial<Omit<NewSocialLink, "id">>): Promise<SocialLink | null>;
+	deleteSocialLink(id: string): Promise<boolean>;
 }

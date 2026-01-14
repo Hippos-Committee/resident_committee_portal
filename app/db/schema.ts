@@ -111,6 +111,24 @@ export type NewBudget = typeof budgets.$inferInsert;
 export type TransactionType = "income" | "expense";
 
 /**
+ * Transaction status values
+ * - pending: Awaiting reimbursement or admin action
+ * - complete: Finalized transaction
+ * - paused: Temporarily on hold
+ * - declined: Rejected by admin
+ */
+export type TransactionStatus = "pending" | "complete" | "paused" | "declined";
+
+/**
+ * Reimbursement status values
+ * - not_requested: No reimbursement needed
+ * - requested: Reimbursement request submitted
+ * - approved: Reimbursement approved
+ * - declined: Reimbursement rejected
+ */
+export type ReimbursementStatus = "not_requested" | "requested" | "approved" | "declined";
+
+/**
  * Transactions table schema
  * Tracks all monetary traffic (income and expenses)
  */
@@ -122,10 +140,69 @@ export const transactions = pgTable("transactions", {
 	description: text("description").notNull(),
 	category: text("category"),
 	date: timestamp("date").notNull(),
+	// Status tracking
+	status: text("status").$type<TransactionStatus>().notNull().default("complete"),
+	reimbursementStatus: text("reimbursement_status").$type<ReimbursementStatus>().default("not_requested"),
+	// Links to other entities
 	purchaseId: uuid("purchase_id").references(() => purchases.id),
+	inventoryItemId: uuid("inventory_item_id").references(() => inventoryItems.id),
+	// Timestamps
 	createdAt: timestamp("created_at").defaultNow().notNull(),
 	updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
 export type Transaction = typeof transactions.$inferSelect;
 export type NewTransaction = typeof transactions.$inferInsert;
+
+/**
+ * Submission types matching contact form options
+ */
+export type SubmissionType = "committee" | "events" | "purchases" | "questions";
+
+/**
+ * Submission status values
+ */
+export type SubmissionStatus =
+	| "Uusi / New"
+	| "Käsittelyssä / In Progress"
+	| "Hyväksytty / Approved"
+	| "Hylätty / Rejected"
+	| "Valmis / Done";
+
+/**
+ * Submissions table schema
+ * Stores contact form submissions
+ */
+export const submissions = pgTable("submissions", {
+	id: uuid("id").primaryKey().defaultRandom(),
+	type: text("type").$type<SubmissionType>().notNull(),
+	name: text("name").notNull(),
+	email: text("email").notNull(),
+	apartmentNumber: text("apartment_number"),
+	message: text("message").notNull(),
+	status: text("status").$type<SubmissionStatus>().notNull().default("Uusi / New"),
+	createdAt: timestamp("created_at").defaultNow().notNull(),
+	updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export type Submission = typeof submissions.$inferSelect;
+export type NewSubmission = typeof submissions.$inferInsert;
+
+/**
+ * Social links table schema
+ * Stores social media links displayed on the social page
+ */
+export const socialLinks = pgTable("social_links", {
+	id: uuid("id").primaryKey().defaultRandom(),
+	name: text("name").notNull(),
+	icon: text("icon").notNull(), // Material symbol name
+	url: text("url").notNull(),
+	color: text("color").notNull(), // Tailwind class e.g. "bg-blue-500"
+	sortOrder: integer("sort_order").notNull().default(0),
+	isActive: boolean("is_active").notNull().default(true),
+	createdAt: timestamp("created_at").defaultNow().notNull(),
+	updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export type SocialLink = typeof socialLinks.$inferSelect;
+export type NewSocialLink = typeof socialLinks.$inferInsert;

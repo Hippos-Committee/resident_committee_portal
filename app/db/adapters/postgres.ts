@@ -1,7 +1,7 @@
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { eq } from "drizzle-orm";
-import { users, inventoryItems, purchases, budgets, transactions, type User, type NewUser, type InventoryItem, type NewInventoryItem, type Purchase, type NewPurchase, type Budget, type NewBudget, type Transaction, type NewTransaction } from "../schema";
+import { users, inventoryItems, purchases, budgets, transactions, submissions, socialLinks, type User, type NewUser, type InventoryItem, type NewInventoryItem, type Purchase, type NewPurchase, type Budget, type NewBudget, type Transaction, type NewTransaction, type Submission, type NewSubmission, type SubmissionStatus, type SocialLink, type NewSocialLink } from "../schema";
 import type { DatabaseAdapter } from "./types";
 
 /**
@@ -155,6 +155,56 @@ export class PostgresAdapter implements DatabaseAdapter {
 
 	async deleteTransaction(id: string): Promise<boolean> {
 		const result = await this.db.delete(transactions).where(eq(transactions.id, id)).returning();
+		return result.length > 0;
+	}
+
+	// ==================== Submission Methods ====================
+	async getSubmissions(): Promise<Submission[]> {
+		return this.db.select().from(submissions);
+	}
+
+	async getSubmissionById(id: string): Promise<Submission | null> {
+		const result = await this.db.select().from(submissions).where(eq(submissions.id, id)).limit(1);
+		return result[0] ?? null;
+	}
+
+	async createSubmission(submission: NewSubmission): Promise<Submission> {
+		const result = await this.db.insert(submissions).values(submission).returning();
+		return result[0];
+	}
+
+	async updateSubmissionStatus(id: string, status: SubmissionStatus): Promise<Submission | null> {
+		const result = await this.db.update(submissions).set({ status, updatedAt: new Date() }).where(eq(submissions.id, id)).returning();
+		return result[0] ?? null;
+	}
+
+	async deleteSubmission(id: string): Promise<boolean> {
+		const result = await this.db.delete(submissions).where(eq(submissions.id, id)).returning();
+		return result.length > 0;
+	}
+
+	// ==================== Social Link Methods ====================
+	async getSocialLinks(): Promise<SocialLink[]> {
+		return this.db.select().from(socialLinks);
+	}
+
+	async getSocialLinkById(id: string): Promise<SocialLink | null> {
+		const result = await this.db.select().from(socialLinks).where(eq(socialLinks.id, id)).limit(1);
+		return result[0] ?? null;
+	}
+
+	async createSocialLink(link: NewSocialLink): Promise<SocialLink> {
+		const result = await this.db.insert(socialLinks).values(link).returning();
+		return result[0];
+	}
+
+	async updateSocialLink(id: string, data: Partial<Omit<NewSocialLink, "id">>): Promise<SocialLink | null> {
+		const result = await this.db.update(socialLinks).set({ ...data, updatedAt: new Date() }).where(eq(socialLinks.id, id)).returning();
+		return result[0] ?? null;
+	}
+
+	async deleteSocialLink(id: string): Promise<boolean> {
+		const result = await this.db.delete(socialLinks).where(eq(socialLinks.id, id)).returning();
 		return result.length > 0;
 	}
 }

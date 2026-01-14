@@ -18,6 +18,21 @@ import {
     SelectTrigger,
     SelectValue,
 } from "~/components/ui/select";
+import { Check, ChevronsUpDown } from "lucide-react";
+import { cn } from "~/lib/utils";
+import {
+    Command,
+    CommandEmpty,
+    CommandGroup,
+    CommandInput,
+    CommandItem,
+    CommandList,
+} from "~/components/ui/command";
+import {
+    Popover,
+    PopoverContent,
+    PopoverTrigger,
+} from "~/components/ui/popover";
 
 export function meta({ data }: Route.MetaArgs) {
     return [
@@ -52,12 +67,24 @@ export async function loader({ request }: Route.LoaderArgs) {
             date: t.date,
         }));
 
+    // Get all existing inventory items for auto-fill suggestions
+    const existingItems = await db.getInventoryItems();
+    const uniqueItems = existingItems.map(item => ({
+        id: item.id,
+        name: item.name,
+        location: item.location,
+        category: item.category,
+        description: item.description,
+        value: item.value,
+    }));
+
     return {
         siteConfig: SITE_CONFIG,
         recentMinutes,
         recentTransactions,
         emailConfigured: isEmailConfigured(),
         currentYear,
+        existingItems: uniqueItems,
     };
 }
 
@@ -69,7 +96,22 @@ export async function action({ request }: Route.ActionArgs) {
     const addToTreasury = formData.get("addToTreasury") === "on";
     const requestReimbursement = formData.get("requestReimbursement") === "on";
 
-    // Create inventory item
+    // Smart add: check if an existing item matches
+    const existingItemId = formData.get("existingItemId") as string | null;
+
+    if (existingItemId) {
+        // User selected an existing item - just increment quantity
+        const existingItem = await db.getInventoryItemById(existingItemId);
+        if (existingItem) {
+            const addQty = parseInt(formData.get("quantity") as string) || 1;
+            await db.updateInventoryItem(existingItemId, {
+                quantity: existingItem.quantity + addQty,
+            });
+            return redirect("/inventory");
+        }
+    }
+
+    // Create new inventory item
     const newItem: NewInventoryItem = {
         name: formData.get("name") as string,
         quantity: parseInt(formData.get("quantity") as string) || 1,
@@ -77,6 +119,7 @@ export async function action({ request }: Route.ActionArgs) {
         category: (formData.get("category") as string) || null,
         description: (formData.get("description") as string) || null,
         value: formData.get("value") as string || "0",
+        showInInfoReel: formData.get("showInInfoReel") === "on",
         purchasedAt: formData.get("purchasedAt")
             ? new Date(formData.get("purchasedAt") as string)
             : null,
@@ -187,11 +230,12 @@ export async function action({ request }: Route.ActionArgs) {
 }
 
 export default function NewInventoryItem({ loaderData }: Route.ComponentProps) {
-    const { recentMinutes, recentTransactions, emailConfigured, currentYear } = loaderData ?? {
+    const { recentMinutes, recentTransactions, emailConfigured, currentYear, existingItems } = loaderData ?? {
         recentMinutes: [] as Array<{ id: string; name: string; year: number }>,
         recentTransactions: [] as Array<{ amount: string; description: string; date: Date }>,
         emailConfigured: false,
         currentYear: new Date().getFullYear(),
+        existingItems: [] as Array<{ id: string; name: string; location: string; category: string | null; description: string | null; value: string | null; }>,
     };
     const navigate = useNavigate();
     const [addToTreasury, setAddToTreasury] = useState(false);
@@ -199,6 +243,53 @@ export default function NewInventoryItem({ loaderData }: Route.ComponentProps) {
     const [itemValue, setItemValue] = useState("0");
     const [itemName, setItemName] = useState("");
     const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
+
+    // Combobox open states
+    const [nameOpen, setNameOpen] = useState(false);
+    const [locationOpen, setLocationOpen] = useState(false);
+    const [categoryOpen, setCategoryOpen] = useState(false);
+
+    // Extract unique options
+    const uniqueLocations = Array.from(new Set(existingItems.map(i => i.location))).filter((l): l is string => !!l).sort();
+    const uniqueCategories = Array.from(new Set(existingItems.map(i => i.category))).filter((c): c is string => !!c).sort();
+
+    // Auto-fill state
+    const [selectedExistingId, setSelectedExistingId] = useState<string | null>(null);
+    const [location, setLocation] = useState("");
+    const [category, setCategory] = useState("");
+    const [description, setDescription] = useState("");
+
+    // Auto-fill effect
+    // We keep this to handle when user types a name that matches exactly without selecting
+    useEffect(() => {
+        const match = existingItems.find(i => i.name.toLowerCase() === itemName.toLowerCase());
+        if (match) {
+            setSelectedExistingId(match.id);
+            // Only auto-fill if the fields are empty or match the item's values
+            if (!location || location === match.location) setLocation(match.location);
+            if (!category || category === match.category || !match.category) setCategory(match.category || "");
+            if (!description || description === match.description || !match.description) setDescription(match.description || "");
+            if ((!itemValue || itemValue === "0") && match.value && match.value !== "0") {
+                setItemValue(match.value);
+            }
+        } else {
+            setSelectedExistingId(null);
+        }
+    }, [itemName, existingItems]);
+
+    // Check if current values match the selected existing item
+    const isExactMatch = () => {
+        if (!selectedExistingId) return false;
+        const match = existingItems.find(i => i.id === selectedExistingId);
+        if (!match) return false;
+
+        return (
+            match.location === location &&
+            (match.category || "") === category &&
+            (match.description || "") === description &&
+            (match.value || "0") === itemValue
+        );
+    };
 
     // When addToTreasury is unchecked, also uncheck reimbursement
     useEffect(() => {
@@ -250,13 +341,75 @@ export default function NewInventoryItem({ loaderData }: Route.ComponentProps) {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="space-y-2">
                                 <Label htmlFor="name">Nimi / Name *</Label>
-                                <Input
-                                    id="name"
-                                    name="name"
-                                    required
-                                    placeholder="Esim. Kahvinkeitin"
-                                    value={itemName}
-                                    onChange={(e) => setItemName(e.target.value)}
+                                {/* Name Combobox */}
+                                <Popover open={nameOpen} onOpenChange={setNameOpen}>
+                                    <PopoverTrigger asChild>
+                                        <Button
+                                            variant="outline"
+                                            role="combobox"
+                                            aria-expanded={nameOpen}
+                                            className="w-full justify-between"
+                                        >
+                                            {itemName || "Valitse tai kirjoita nimi..."}
+                                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                        </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                                        <Command>
+                                            <CommandInput
+                                                placeholder="Etsi tavaraa..."
+                                                value={itemName}
+                                                onValueChange={setItemName}
+                                            />
+                                            <CommandList>
+                                                <CommandEmpty>
+                                                    <div className="py-2 px-2 text-sm">
+                                                        <span className="text-muted-foreground mr-2">Ei löydy.</span>
+                                                        <span className="font-medium text-primary cursor-pointer hover:underline" onClick={() => setNameOpen(false)}>
+                                                            Käytä nimeä "{itemName}"
+                                                        </span>
+                                                    </div>
+                                                </CommandEmpty>
+                                                <CommandGroup heading="Olemassa olevat tavarat">
+                                                    {existingItems.map((item) => (
+                                                        <CommandItem
+                                                            key={item.id}
+                                                            value={item.name}
+                                                            onSelect={(currentValue) => {
+                                                                setItemName(currentValue);
+                                                                // Trigger explicit auto-fill on selection
+                                                                const match = existingItems.find(i => i.name.toLowerCase() === currentValue.toLowerCase());
+                                                                if (match) {
+                                                                    setSelectedExistingId(match.id);
+                                                                    setLocation(match.location);
+                                                                    setCategory(match.category || "");
+                                                                    setDescription(match.description || "");
+                                                                    if (match.value && match.value !== "0") setItemValue(match.value);
+                                                                }
+                                                                setNameOpen(false);
+                                                            }}
+                                                        >
+                                                            <Check
+                                                                className={cn(
+                                                                    "mr-2 h-4 w-4",
+                                                                    itemName === item.name ? "opacity-100" : "opacity-0"
+                                                                )}
+                                                            />
+                                                            {item.name}
+                                                            {item.location && <span className="ml-2 text-xs text-muted-foreground">({item.location})</span>}
+                                                        </CommandItem>
+                                                    ))}
+                                                </CommandGroup>
+                                            </CommandList>
+                                        </Command>
+                                    </PopoverContent>
+                                </Popover>
+                                <input type="hidden" name="name" value={itemName} />
+
+                                <input
+                                    type="hidden"
+                                    name="existingItemId"
+                                    value={isExactMatch() ? selectedExistingId! : ""}
                                 />
                             </div>
                             <div className="space-y-2">
@@ -275,20 +428,117 @@ export default function NewInventoryItem({ loaderData }: Route.ComponentProps) {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="space-y-2">
                                 <Label htmlFor="location">Sijainti / Location *</Label>
-                                <Input
-                                    id="location"
-                                    name="location"
-                                    required
-                                    placeholder="Esim. Kerhohuone"
-                                />
+                                {/* Location Combobox */}
+                                <Popover open={locationOpen} onOpenChange={setLocationOpen}>
+                                    <PopoverTrigger asChild>
+                                        <Button
+                                            variant="outline"
+                                            role="combobox"
+                                            aria-expanded={locationOpen}
+                                            className="w-full justify-between"
+                                        >
+                                            {location || "Valitse tai kirjoita..."}
+                                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                        </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                                        <Command>
+                                            <CommandInput
+                                                placeholder="Etsi sijaintia..."
+                                                value={location}
+                                                onValueChange={setLocation}
+                                            />
+                                            <CommandList>
+                                                <CommandEmpty>
+                                                    <div className="py-2 px-2 text-sm">
+                                                        <span className="text-muted-foreground mr-2">Ei listalla.</span>
+                                                        <span className="font-medium text-primary cursor-pointer hover:underline" onClick={() => setLocationOpen(false)}>
+                                                            Käytä "{location}"
+                                                        </span>
+                                                    </div>
+                                                </CommandEmpty>
+                                                <CommandGroup>
+                                                    {uniqueLocations.map((loc) => (
+                                                        <CommandItem
+                                                            key={loc}
+                                                            value={loc}
+                                                            onSelect={(currentValue) => {
+                                                                setLocation(currentValue);
+                                                                setLocationOpen(false);
+                                                            }}
+                                                        >
+                                                            <Check
+                                                                className={cn(
+                                                                    "mr-2 h-4 w-4",
+                                                                    location === loc ? "opacity-100" : "opacity-0"
+                                                                )}
+                                                            />
+                                                            {loc}
+                                                        </CommandItem>
+                                                    ))}
+                                                </CommandGroup>
+                                            </CommandList>
+                                        </Command>
+                                    </PopoverContent>
+                                </Popover>
+                                <input type="hidden" name="location" value={location} />
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor="category">Kategoria / Category</Label>
-                                <Input
-                                    id="category"
-                                    name="category"
-                                    placeholder="Esim. Keittiö"
-                                />
+                                {/* Category Combobox */}
+                                <Popover open={categoryOpen} onOpenChange={setCategoryOpen}>
+                                    <PopoverTrigger asChild>
+                                        <Button
+                                            variant="outline"
+                                            role="combobox"
+                                            aria-expanded={categoryOpen}
+                                            className="w-full justify-between"
+                                        >
+                                            {category || "Valitse tai kirjoita..."}
+                                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                        </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                                        <Command>
+                                            <CommandInput
+                                                placeholder="Etsi kategoriaa..."
+                                                value={category}
+                                                onValueChange={setCategory}
+                                            />
+                                            <CommandList>
+                                                <CommandEmpty>
+                                                    <div className="py-2 px-2 text-sm">
+                                                        <span className="text-muted-foreground mr-2">Ei listalla.</span>
+                                                        <span className="font-medium text-primary cursor-pointer hover:underline" onClick={() => setCategoryOpen(false)}>
+                                                            Käytä "{category}"
+                                                        </span>
+                                                    </div>
+                                                </CommandEmpty>
+                                                <CommandGroup>
+                                                    {uniqueCategories.map((cat) => (
+                                                        <CommandItem
+                                                            key={cat}
+                                                            value={cat}
+                                                            onSelect={(currentValue) => {
+                                                                setCategory(currentValue);
+                                                                setCategoryOpen(false);
+                                                            }}
+                                                        >
+                                                            <Check
+                                                                className={cn(
+                                                                    "mr-2 h-4 w-4",
+                                                                    category === cat ? "opacity-100" : "opacity-0"
+                                                                )}
+                                                            />
+                                                            {cat}
+                                                        </CommandItem>
+                                                    ))}
+                                                </CommandGroup>
+                                            </CommandList>
+                                        </Command>
+                                    </PopoverContent>
+                                </Popover>
+                                <input type="hidden" name="category" value={category} />
                             </div>
                         </div>
 
@@ -297,7 +547,9 @@ export default function NewInventoryItem({ loaderData }: Route.ComponentProps) {
                             <Input
                                 id="description"
                                 name="description"
-                                placeholder="Vapaamuotoinen kuvaus"
+                                placeholder="Lisätietoja tavarasta"
+                                value={description}
+                                onChange={(e) => setDescription(e.target.value)}
                             />
                         </div>
 
@@ -324,6 +576,16 @@ export default function NewInventoryItem({ loaderData }: Route.ComponentProps) {
                                     defaultValue={new Date().toISOString().split("T")[0]}
                                 />
                             </div>
+                        </div>
+
+                        <div className="flex items-center gap-3 pt-2">
+                            <Checkbox
+                                id="showInInfoReel"
+                                name="showInInfoReel"
+                            />
+                            <Label htmlFor="showInInfoReel" className="cursor-pointer">
+                                Näytä Info Reelissä / Show in Info Reel
+                            </Label>
                         </div>
                     </div>
 

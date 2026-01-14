@@ -7,6 +7,7 @@ import { PageWrapper } from "~/components/layout/page-layout";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { Label } from "~/components/ui/label";
+import { Checkbox } from "~/components/ui/checkbox";
 
 export function meta({ data }: Route.MetaArgs) {
     const itemName = data?.item?.name;
@@ -47,6 +48,7 @@ export async function action({ request, params }: Route.ActionArgs) {
         category: (formData.get("category") as string) || null,
         description: (formData.get("description") as string) || null,
         value: formData.get("value") as string || "0",
+        showInInfoReel: formData.get("showInInfoReel") === "on",
         purchasedAt: formData.get("purchasedAt")
             ? new Date(formData.get("purchasedAt") as string)
             : null,
@@ -156,6 +158,17 @@ export default function EditInventoryItem({ loaderData }: Route.ComponentProps) 
                                     defaultValue={formatDateForInput(item.purchasedAt)}
                                 />
                             </div>
+                        </div>
+
+                        <div className="flex items-center gap-3 pt-2">
+                            <Checkbox
+                                id="showInInfoReel"
+                                name="showInInfoReel"
+                                defaultChecked={item.showInInfoReel}
+                            />
+                            <Label htmlFor="showInInfoReel" className="cursor-pointer">
+                                Näytä Info Reelissä / Show in Info Reel
+                            </Label>
                         </div>
                     </div>
 

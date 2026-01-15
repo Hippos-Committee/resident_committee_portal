@@ -98,9 +98,9 @@ export function SplitLayout({ children, right, header, className, footer }: Spli
         );
     }
 
-    // Regular mode: centered, full-width content
+    // Regular mode: full-width content
     return (
-        <div className={cn("w-full max-w-[800px] overflow-hidden flex flex-col h-auto", className)}>
+        <div className={cn("w-full overflow-hidden flex flex-col h-auto", className)}>
             <div className="flex flex-col p-8 lg:p-12 relative">
                 {/* Header row with optional action button on right */}
                 {header && (

@@ -288,16 +288,32 @@ export default function NewTransaction({ loaderData }: Route.ComponentProps) {
     );
 
     // Combined items: unlinked + any pre-selected linked items (for editing)
-    const availableItems = [...unlinkedInventoryItems, ...linkedItems.map(li => ({
-        ...li,
-        location: "",
-        category: null,
-        description: null,
-        showInInfoReel: false,
-        purchasedAt: null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-    } as InventoryItem))];
+    // Dedupe by ID to avoid showing items twice
+    const availableItemsMap = new Map<string, InventoryItem>();
+
+    // Add unlinked items first (these have full data)
+    for (const item of unlinkedInventoryItems) {
+        availableItemsMap.set(item.id, item);
+    }
+
+    // Only add linked items if they're NOT already in the map
+    // (linked items have sparse data, so we prefer unlinked ones)
+    for (const li of linkedItems) {
+        if (!availableItemsMap.has(li.id)) {
+            availableItemsMap.set(li.id, {
+                ...li,
+                location: "",
+                category: null,
+                description: null,
+                showInInfoReel: false,
+                purchasedAt: null,
+                createdAt: new Date(),
+                updatedAt: new Date(),
+            } as InventoryItem);
+        }
+    }
+
+    const availableItems = Array.from(availableItemsMap.values());
 
     // Generate year options (last 5 years)
     const yearOptions = Array.from({ length: 5 }, (_, i) => currentYear - i);

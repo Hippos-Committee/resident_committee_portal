@@ -195,7 +195,8 @@ export function DataTable<TData, TValue>({
                                 <TableRow
                                     key={row.id}
                                     data-state={row.getIsSelected() && "selected"}
-                                    className={row.getIsSelected() ? "bg-primary/5" : undefined}
+                                    className={`${row.getIsSelected() ? "bg-primary/5" : ""} ${enableRowSelection ? "cursor-pointer" : ""}`}
+                                    onClick={enableRowSelection ? () => row.toggleSelected() : undefined}
                                 >
                                     {row.getVisibleCells().map((cell) => (
                                         <TableCell key={cell.id}>

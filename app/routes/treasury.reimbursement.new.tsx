@@ -2,7 +2,7 @@ import type { Route } from "./+types/treasury.reimbursement.new";
 import { Form, redirect, useNavigate, useActionData } from "react-router";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
-import { requireStaff } from "~/lib/auth.server";
+import { requirePermission } from "~/lib/auth.server";
 import { getDatabase, type NewPurchase, type NewInventoryItem } from "~/db";
 import { getMinutesByYear, getFileAsBase64 } from "~/lib/google.server";
 import { sendReimbursementEmail, isEmailConfigured } from "~/lib/email.server";
@@ -34,7 +34,7 @@ export function meta({ data }: Route.MetaArgs) {
 }
 
 export async function loader({ request }: Route.LoaderArgs) {
-    await requireStaff(request, getDatabase);
+    await requirePermission(request, "reimbursements:write", getDatabase);
 
     const minutesByYear = await getMinutesByYear();
     const recentMinutes: MinuteFile[] = minutesByYear.flatMap(year =>
@@ -54,7 +54,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 }
 
 export async function action({ request }: Route.ActionArgs) {
-    await requireStaff(request, getDatabase);
+    await requirePermission(request, "reimbursements:write", getDatabase);
     const db = getDatabase();
     const formData = await request.formData();
 
@@ -135,7 +135,7 @@ export async function action({ request }: Route.ActionArgs) {
             }
         }
 
-        const emailSuccess = await sendReimbursementEmail(
+        const emailResult = await sendReimbursementEmail(
             {
                 itemName: description,
                 itemValue: amount,
@@ -144,14 +144,18 @@ export async function action({ request }: Route.ActionArgs) {
                 minutesReference: minutesName || minutesId,
                 notes,
             },
+            purchase.id,
             receiptAttachment,
             minutesAttachment
         );
 
-        if (emailSuccess) {
-            await db.updatePurchase(purchase.id, { emailSent: true });
+        if (emailResult.success) {
+            await db.updatePurchase(purchase.id, {
+                emailSent: true,
+                emailMessageId: emailResult.messageId,
+            });
         } else {
-            await db.updatePurchase(purchase.id, { emailError: "Email sending failed" });
+            await db.updatePurchase(purchase.id, { emailError: emailResult.error || "Email sending failed" });
         }
     } catch (error) {
         console.error("[Reimbursement] Email error:", error);

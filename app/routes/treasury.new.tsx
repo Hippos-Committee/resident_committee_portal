@@ -1,7 +1,7 @@
 import type { Route } from "./+types/treasury.new";
 import { Form, redirect, useNavigate, useFetcher } from "react-router";
 import { useState } from "react";
-import { requireStaff } from "~/lib/auth.server";
+import { requirePermission } from "~/lib/auth.server";
 import { getDatabase, type NewTransaction, type NewPurchase, type NewInventoryItem, type InventoryItem } from "~/db";
 import { getMinutesByYear } from "~/lib/google.server";
 import { sendReimbursementEmail, isEmailConfigured } from "~/lib/email.server";
@@ -45,7 +45,7 @@ export function meta({ data }: Route.MetaArgs) {
 }
 
 export async function loader({ request }: Route.LoaderArgs) {
-    await requireStaff(request, getDatabase);
+    await requirePermission(request, "treasury:write", getDatabase);
     const db = getDatabase();
 
     // Parse URL params for pre-fill
@@ -112,7 +112,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 }
 
 export async function action({ request }: Route.ActionArgs) {
-    await requireStaff(request, getDatabase);
+    await requirePermission(request, "treasury:write", getDatabase);
     const db = getDatabase();
 
     const formData = await request.formData();
@@ -185,7 +185,7 @@ export async function action({ request }: Route.ActionArgs) {
                 const arrayBuffer = await receiptFile.arrayBuffer();
                 const base64Content = Buffer.from(arrayBuffer).toString("base64");
 
-                await sendReimbursementEmail(
+                const emailResult = await sendReimbursementEmail(
                     {
                         itemName: description,
                         itemValue: amount,
@@ -194,6 +194,7 @@ export async function action({ request }: Route.ActionArgs) {
                         minutesReference: minutesId || "Ei määritetty / Not specified",
                         notes,
                     },
+                    purchase.id,
                     {
                         name: receiptFile.name,
                         type: receiptFile.type,
@@ -201,7 +202,14 @@ export async function action({ request }: Route.ActionArgs) {
                     }
                 );
 
-                await db.updatePurchase(purchase.id, { emailSent: true });
+                if (emailResult.success) {
+                    await db.updatePurchase(purchase.id, {
+                        emailSent: true,
+                        emailMessageId: emailResult.messageId,
+                    });
+                } else {
+                    await db.updatePurchase(purchase.id, { emailError: emailResult.error || "Unknown error" });
+                }
             } catch (error) {
                 await db.updatePurchase(purchase.id, {
                     emailError: error instanceof Error ? error.message : "Unknown error",
@@ -210,15 +218,25 @@ export async function action({ request }: Route.ActionArgs) {
         } else {
             // Send email without attachment
             try {
-                await sendReimbursementEmail({
-                    itemName: description,
-                    itemValue: amount,
-                    purchaserName,
-                    bankAccount,
-                    minutesReference: minutesId || "Ei määritetty / Not specified",
-                    notes,
-                });
-                await db.updatePurchase(purchase.id, { emailSent: true });
+                const emailResult = await sendReimbursementEmail(
+                    {
+                        itemName: description,
+                        itemValue: amount,
+                        purchaserName,
+                        bankAccount,
+                        minutesReference: minutesId || "Ei määritetty / Not specified",
+                        notes,
+                    },
+                    purchase.id
+                );
+                if (emailResult.success) {
+                    await db.updatePurchase(purchase.id, {
+                        emailSent: true,
+                        emailMessageId: emailResult.messageId,
+                    });
+                } else {
+                    await db.updatePurchase(purchase.id, { emailError: emailResult.error || "Unknown error" });
+                }
             } catch (error) {
                 await db.updatePurchase(purchase.id, {
                     emailError: error instanceof Error ? error.message : "Unknown error",

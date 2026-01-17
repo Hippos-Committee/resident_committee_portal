@@ -24,12 +24,14 @@ export default [
 	route("profile", "routes/profile.tsx"),
 	// Staff routes (admin + board_member)
 	route("submissions", "routes/submissions.tsx"),
-	// Admin routes
-	route("admin/users", "routes/admin.users.tsx"),
-	route("admin/purchases", "routes/admin.purchases.tsx"),
+	// Settings routes (admin only)
+	route("settings/users", "routes/settings.users.tsx"),
+	route("settings/roles", "routes/settings.roles.tsx"),
+	route("settings/reimbursements", "routes/settings.reimbursements.tsx"),
 	// API routes
 	route("api/risc/receiver", "routes/api.risc.receiver.tsx"),
 	route("api/inventory/export", "routes/api.inventory.export.tsx"),
 	route("api/inventory/import", "routes/api.inventory.import.tsx"),
+	route("api/webhooks/resend", "routes/api.webhooks.resend.tsx"),
 ] satisfies RouteConfig;
 

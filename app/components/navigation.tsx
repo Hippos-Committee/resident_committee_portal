@@ -1,6 +1,7 @@
 import { Link, useLocation } from "react-router";
 import { cn } from "~/lib/utils";
 import { useInfoReel } from "~/contexts/info-reel-context";
+import { useUser } from "~/contexts/user-context";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -15,76 +16,59 @@ import {
     TooltipTrigger,
 } from "~/components/ui/tooltip";
 
-interface UserInfo {
-    email: string;
-    name?: string;
-    isAdmin: boolean;
-    role?: "resident" | "board_member" | "admin";
-}
-
-interface NavVisibility {
-    showLogin: boolean;
-    showLogout: boolean;
-    showProfile: boolean;
-    showSubmissions: boolean;
-    showUsers: boolean;
-}
-
 interface NavigationProps {
     className?: string;
     orientation?: "vertical" | "horizontal";
-    user?: UserInfo | null;
-    navVisibility?: NavVisibility;
 }
 
-export function Navigation({ className, orientation = "vertical", user, navVisibility }: NavigationProps) {
+export function Navigation({ className, orientation = "vertical" }: NavigationProps) {
     const location = useLocation();
     const pathname = location.pathname;
     const { isInfoReel, fillProgress, opacity } = useInfoReel();
+    const { user, hasPermission, hasAnyPermission } = useUser();
 
-    // Check if profile menu should be shown (user is logged in)
-    const showProfileMenu = navVisibility ? navVisibility.showProfile : !!user;
+    // Check if profile menu should be shown (user is logged in, not guest)
+    const showProfileMenu = user && user.userId !== "guest";
+
+    // Check if settings menu should be shown (has any admin permissions)
+    const showSettingsMenu = !isInfoReel && hasAnyPermission(["users:read", "roles:read", "reimbursements:approve"]);
 
     const allNavItems = [
         { path: "/", icon: "volunteer_activism", label: "Osallistu", subLabel: "Get Involved" },
-        { path: "/events", icon: "event", label: "Tapahtumat", subLabel: "Events" },
-        { path: "/treasury", icon: "payments", label: "Rahasto", subLabel: "Treasury" },
-        { path: "/minutes", icon: "description", label: "Pöytäkirjat", subLabel: "Minutes" },
-        { path: "/inventory", icon: "inventory_2", label: "Tavaraluettelo", subLabel: "Inventory" },
-        { path: "/social", icon: "forum", label: "Some", subLabel: "Social" },
+        { path: "/events", icon: "event", label: "Tapahtumat", subLabel: "Events", permission: "events:read" },
+        { path: "/treasury", icon: "payments", label: "Rahasto", subLabel: "Treasury", permission: "treasury:read" },
+        { path: "/minutes", icon: "description", label: "Pöytäkirjat", subLabel: "Minutes", permission: "minutes:read" },
+        { path: "/inventory", icon: "inventory_2", label: "Tavaraluettelo", subLabel: "Inventory", permission: "inventory:read" },
+        { path: "/social", icon: "forum", label: "Some", subLabel: "Social", permission: "social:read" },
         // Auth items - shown conditionally
         { path: "/auth/login", icon: "login", label: "Kirjaudu", subLabel: "Login", showWhen: "logged-out" },
-        // Staff items (admin or board_member)
-        { path: "/submissions", icon: "mail", label: "Yhteydenotot", subLabel: "Submissions", showWhen: "staff" },
-        // Admin items
-        { path: "/admin/users", icon: "manage_accounts", label: "Käyttäjät", subLabel: "Users", showWhen: "admin" },
+        // Submissions - requires submissions:read permission
+        { path: "/submissions", icon: "mail", label: "Yhteydenotot", subLabel: "Submissions", permission: "submissions:read" },
     ] as const;
 
-    // Filter nav items based on server-computed visibility and info reel mode
+    // Filter nav items based on permissions and info reel mode
     const navItems = allNavItems.filter(item => {
-        if (isInfoReel && 'showWhen' in item) return false;
-        if (!('showWhen' in item)) return true;
+        // Hide all conditional items during info reel
+        if (isInfoReel && ('showWhen' in item || 'permission' in item)) return false;
 
-        // Use server-computed visibility flags
-        if (navVisibility) {
-            switch (item.showWhen) {
-                case "logged-out": return navVisibility.showLogin;
-                case "staff": return navVisibility.showSubmissions;
-                case "admin": return navVisibility.showUsers;
-                default: return true;
-            }
+        // Always show items without conditions
+        if (!('showWhen' in item) && !('permission' in item)) return true;
+
+        // Handle login visibility (show for guests, hide for logged-in users)
+        if ('showWhen' in item && item.showWhen === "logged-out") {
+            return !user || user.userId === "guest";
         }
 
-        // Fallback for when navVisibility is not provided
-        switch (item.showWhen) {
-            case "logged-out": return !user;
-            case "staff": return user?.role === "admin" || user?.role === "board_member";
-            case "admin": return user?.isAdmin;
-            default: return true;
+        // Handle permission-based visibility
+        if ('permission' in item) {
+            return hasPermission(item.permission);
         }
+
+        return true;
     });
 
     const isProfileActive = pathname === "/profile";
+    const isSettingsActive = pathname.startsWith("/settings");
 
     return (
         <TooltipProvider delayDuration={200}>
@@ -150,6 +134,76 @@ export function Navigation({ className, orientation = "vertical", user, navVisib
                         </Tooltip>
                     );
                 })}
+
+                {/* Settings Dropdown Menu - Only show for admins */}
+                {showSettingsMenu && (
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <button
+                                className={cn(
+                                    "relative group flex items-center justify-center lg:justify-start gap-3 px-3 lg:px-4 py-2 rounded-xl transition-all duration-300 overflow-hidden",
+                                    "hover:bg-primary/10 hover:text-primary cursor-pointer",
+                                    isSettingsActive ? "text-primary bg-primary/10" : "text-gray-500 dark:text-gray-400"
+                                )}
+                            >
+                                <span className="relative material-symbols-outlined text-2xl md:text-3xl">
+                                    settings
+                                </span>
+
+                                <div className={cn(
+                                    "relative flex-col items-start leading-none hidden lg:flex",
+                                    orientation === "vertical" && "lg:hidden"
+                                )}>
+                                    <span className="text-sm md:text-base font-bold">Asetukset</span>
+                                    <span className="text-[10px] md:text-xs opacity-60 font-medium">Settings</span>
+                                </div>
+
+                                {/* Dropdown indicator */}
+                                <span className="material-symbols-outlined text-sm opacity-60 hidden lg:block">
+                                    expand_more
+                                </span>
+                            </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-56">
+                            {hasPermission("users:read") && (
+                                <DropdownMenuItem asChild>
+                                    <Link to="/settings/users" className="flex items-center gap-2 cursor-pointer">
+                                        <span className="material-symbols-outlined text-lg">manage_accounts</span>
+                                        <div>
+                                            <p className="font-medium">Käyttäjät</p>
+                                            <p className="text-xs text-muted-foreground">Users</p>
+                                        </div>
+                                    </Link>
+                                </DropdownMenuItem>
+                            )}
+                            {hasPermission("roles:read") && (
+                                <DropdownMenuItem asChild>
+                                    <Link to="/settings/roles" className="flex items-center gap-2 cursor-pointer">
+                                        <span className="material-symbols-outlined text-lg">shield_person</span>
+                                        <div>
+                                            <p className="font-medium">Roolit</p>
+                                            <p className="text-xs text-muted-foreground">Roles</p>
+                                        </div>
+                                    </Link>
+                                </DropdownMenuItem>
+                            )}
+                            {hasPermission("reimbursements:approve") && (
+                                <>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem asChild>
+                                        <Link to="/settings/reimbursements" className="flex items-center gap-2 cursor-pointer">
+                                            <span className="material-symbols-outlined text-lg">smart_toy</span>
+                                            <div>
+                                                <p className="font-medium">Korvaukset</p>
+                                                <p className="text-xs text-muted-foreground">Reimbursements</p>
+                                            </div>
+                                        </Link>
+                                    </DropdownMenuItem>
+                                </>
+                            )}
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                )}
 
                 {/* Profile Dropdown Menu - Only show when logged in */}
                 {showProfileMenu && !isInfoReel && (

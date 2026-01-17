@@ -1,12 +1,64 @@
 import { pgTable, text, timestamp, uuid, integer, decimal, boolean } from "drizzle-orm/pg-core";
 
 /**
- * User roles in the system
+ * Legacy user roles (kept for backward compatibility during migration)
  * - resident: Regular resident of the housing complex
  * - board_member: Member of the student committee/board
  * - admin: Administrator with full access
  */
 export type UserRole = "resident" | "board_member" | "admin";
+
+// ============================================
+// RBAC (Role-Based Access Control) System
+// ============================================
+
+/**
+ * Permissions table schema
+ * Defines all available permissions in the system
+ * Format: "resource:action" (e.g., "inventory:write", "users:manage")
+ */
+export const permissions = pgTable("permissions", {
+	id: uuid("id").primaryKey().defaultRandom(),
+	name: text("name").notNull().unique(), // e.g., "inventory:write"
+	description: text("description"), // Human-readable description
+	category: text("category").notNull(), // Grouping for UI (e.g., "Inventory", "Treasury")
+	createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type Permission = typeof permissions.$inferSelect;
+export type NewPermission = typeof permissions.$inferInsert;
+
+/**
+ * Roles table schema
+ * Admin-defined roles that can be assigned to users
+ */
+export const roles = pgTable("roles", {
+	id: uuid("id").primaryKey().defaultRandom(),
+	name: text("name").notNull().unique(), // e.g., "Board Member"
+	description: text("description"),
+	color: text("color").notNull().default("bg-gray-500"), // Tailwind class for UI badge
+	isSystem: boolean("is_system").notNull().default(false), // Prevent deletion of built-in roles
+	sortOrder: integer("sort_order").notNull().default(0), // For UI ordering
+	createdAt: timestamp("created_at").defaultNow().notNull(),
+	updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export type Role = typeof roles.$inferSelect;
+export type NewRole = typeof roles.$inferInsert;
+
+/**
+ * Role-Permission junction table
+ * Maps which permissions belong to which roles
+ */
+export const rolePermissions = pgTable("role_permissions", {
+	id: uuid("id").primaryKey().defaultRandom(),
+	roleId: uuid("role_id").references(() => roles.id, { onDelete: "cascade" }).notNull(),
+	permissionId: uuid("permission_id").references(() => permissions.id, { onDelete: "cascade" }).notNull(),
+	createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type RolePermission = typeof rolePermissions.$inferSelect;
+export type NewRolePermission = typeof rolePermissions.$inferInsert;
 
 /**
  * Users table schema
@@ -16,7 +68,8 @@ export const users = pgTable("users", {
 	id: uuid("id").primaryKey().defaultRandom(),
 	email: text("email").notNull().unique(),
 	name: text("name").notNull(),
-	role: text("role").$type<UserRole>().notNull().default("resident"),
+	role: text("role").$type<UserRole>().notNull().default("resident"), // Legacy field
+	roleId: uuid("role_id").references(() => roles.id), // New RBAC role reference
 	apartmentNumber: text("apartment_number"),
 	createdAt: timestamp("created_at").defaultNow().notNull(),
 	updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -80,6 +133,10 @@ export const purchases = pgTable("purchases", {
 	// Email tracking
 	emailSent: boolean("email_sent").default(false),
 	emailError: text("email_error"),
+	// Email threading for inbound replies
+	emailMessageId: text("email_message_id"), // Resend message ID for threading
+	emailReplyReceived: boolean("email_reply_received").default(false),
+	emailReplyContent: text("email_reply_content"), // Store reply for audit/review
 	// Year for budget association
 	year: integer("year").notNull(),
 	// Timestamps
@@ -223,3 +280,21 @@ export const socialLinks = pgTable("social_links", {
 
 export type SocialLink = typeof socialLinks.$inferSelect;
 export type NewSocialLink = typeof socialLinks.$inferInsert;
+
+// ============================================
+// APPLICATION SETTINGS
+// ============================================
+
+/**
+ * Key-value store for application settings
+ * Used for: keywords configuration, AI settings, API keys, etc.
+ */
+export const appSettings = pgTable("app_settings", {
+	key: text("key").primaryKey(),
+	value: text("value"),
+	description: text("description"), // For admin UI
+	updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export type AppSetting = typeof appSettings.$inferSelect;
+export type NewAppSetting = typeof appSettings.$inferInsert;

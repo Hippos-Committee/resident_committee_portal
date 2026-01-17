@@ -1,7 +1,7 @@
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import { eq, and, notInArray } from "drizzle-orm";
-import { users, inventoryItems, purchases, budgets, transactions, submissions, socialLinks, inventoryItemTransactions, type User, type NewUser, type InventoryItem, type NewInventoryItem, type Purchase, type NewPurchase, type Budget, type NewBudget, type Transaction, type NewTransaction, type Submission, type NewSubmission, type SubmissionStatus, type SocialLink, type NewSocialLink, type InventoryItemTransaction } from "../schema";
+import { eq, and, notInArray, inArray } from "drizzle-orm";
+import { users, inventoryItems, purchases, budgets, transactions, submissions, socialLinks, inventoryItemTransactions, permissions, roles, rolePermissions, appSettings, type User, type NewUser, type InventoryItem, type NewInventoryItem, type Purchase, type NewPurchase, type Budget, type NewBudget, type Transaction, type NewTransaction, type Submission, type NewSubmission, type SubmissionStatus, type SocialLink, type NewSocialLink, type InventoryItemTransaction, type Permission, type NewPermission, type Role, type NewRole, type RolePermission, type NewRolePermission, type AppSetting } from "../schema";
 import type { DatabaseAdapter } from "./types";
 
 /**
@@ -53,6 +53,160 @@ export class PostgresAdapter implements DatabaseAdapter {
 			return updated!;
 		}
 		return this.createUser(user);
+	}
+
+	// ==================== RBAC Methods ====================
+	// Permissions
+	async getAllPermissions(): Promise<Permission[]> {
+		return this.db.select().from(permissions);
+	}
+
+	async getPermissionById(id: string): Promise<Permission | null> {
+		const result = await this.db.select().from(permissions).where(eq(permissions.id, id)).limit(1);
+		return result[0] ?? null;
+	}
+
+	async getPermissionByName(name: string): Promise<Permission | null> {
+		const result = await this.db.select().from(permissions).where(eq(permissions.name, name)).limit(1);
+		return result[0] ?? null;
+	}
+
+	async createPermission(permission: NewPermission): Promise<Permission> {
+		const result = await this.db.insert(permissions).values(permission).returning();
+		return result[0];
+	}
+
+	async deletePermission(id: string): Promise<boolean> {
+		const result = await this.db.delete(permissions).where(eq(permissions.id, id)).returning();
+		return result.length > 0;
+	}
+
+	// Roles
+	async getAllRoles(): Promise<Role[]> {
+		return this.db.select().from(roles);
+	}
+
+	async getRoleById(id: string): Promise<Role | null> {
+		const result = await this.db.select().from(roles).where(eq(roles.id, id)).limit(1);
+		return result[0] ?? null;
+	}
+
+	async getRoleByName(name: string): Promise<Role | null> {
+		const result = await this.db.select().from(roles).where(eq(roles.name, name)).limit(1);
+		return result[0] ?? null;
+	}
+
+	async createRole(role: NewRole): Promise<Role> {
+		const result = await this.db.insert(roles).values(role).returning();
+		return result[0];
+	}
+
+	async updateRole(id: string, data: Partial<Omit<NewRole, "id">>): Promise<Role | null> {
+		const result = await this.db.update(roles).set({ ...data, updatedAt: new Date() }).where(eq(roles.id, id)).returning();
+		return result[0] ?? null;
+	}
+
+	async deleteRole(id: string): Promise<boolean> {
+		// First check if it's a system role
+		const role = await this.getRoleById(id);
+		if (role?.isSystem) {
+			throw new Error("Cannot delete system role");
+		}
+		// Remove role from users first
+		await this.db.update(users).set({ roleId: null }).where(eq(users.roleId, id));
+		// Delete role (cascade will remove role_permissions)
+		const result = await this.db.delete(roles).where(eq(roles.id, id)).returning();
+		return result.length > 0;
+	}
+
+	// Role-Permission mappings
+	async getRolePermissions(roleId: string): Promise<Permission[]> {
+		const mappings = await this.db.select().from(rolePermissions).where(eq(rolePermissions.roleId, roleId));
+		if (mappings.length === 0) return [];
+		const permissionIds = mappings.map(m => m.permissionId);
+		return this.db.select().from(permissions).where(inArray(permissions.id, permissionIds));
+	}
+
+	async setRolePermissions(roleId: string, permissionIds: string[]): Promise<void> {
+		// Delete existing permissions for role
+		await this.db.delete(rolePermissions).where(eq(rolePermissions.roleId, roleId));
+		// Add new permissions
+		if (permissionIds.length > 0) {
+			await this.db.insert(rolePermissions).values(
+				permissionIds.map(permissionId => ({ roleId, permissionId }))
+			);
+		}
+	}
+
+	async addPermissionToRole(roleId: string, permissionId: string): Promise<RolePermission> {
+		const result = await this.db.insert(rolePermissions).values({ roleId, permissionId }).returning();
+		return result[0];
+	}
+
+	async removePermissionFromRole(roleId: string, permissionId: string): Promise<boolean> {
+		const result = await this.db.delete(rolePermissions)
+			.where(and(eq(rolePermissions.roleId, roleId), eq(rolePermissions.permissionId, permissionId)))
+			.returning();
+		return result.length > 0;
+	}
+
+	// User permissions (computed from role)
+	async getUserPermissions(userId: string): Promise<string[]> {
+		const user = await this.findUserById(userId);
+		if (!user) return [];
+
+		// If user has new roleId, use that
+		if (user.roleId) {
+			const perms = await this.getRolePermissions(user.roleId);
+			return perms.map(p => p.name);
+		}
+
+		// Fallback to legacy role mapping
+		return this.getLegacyPermissions(user.role);
+	}
+
+	async getUserWithRole(userId: string): Promise<(User & { roleName?: string; permissions: string[] }) | null> {
+		const user = await this.findUserById(userId);
+		if (!user) return null;
+
+		let roleName: string | undefined;
+		let perms: string[];
+
+		if (user.roleId) {
+			const role = await this.getRoleById(user.roleId);
+			roleName = role?.name;
+			const rolePerms = await this.getRolePermissions(user.roleId);
+			perms = rolePerms.map(p => p.name);
+		} else {
+			// Fallback to legacy
+			roleName = user.role;
+			perms = this.getLegacyPermissions(user.role);
+		}
+
+		return { ...user, roleName, permissions: perms };
+	}
+
+	// Helper: Map legacy roles to permissions
+	private getLegacyPermissions(legacyRole: string): string[] {
+		const basePermissions = ["profile:read:own", "profile:write:own"];
+
+		if (legacyRole === "board_member") {
+			return [
+				...basePermissions,
+				"inventory:write", "inventory:delete",
+				"treasury:read", "treasury:write", "treasury:edit",
+				"reimbursements:read", "reimbursements:write", "reimbursements:approve",
+				"submissions:read", "submissions:write",
+				"social:write", "social:delete",
+				"minutes:guide",
+			];
+		}
+
+		if (legacyRole === "admin") {
+			return ["*"]; // Super admin has all permissions
+		}
+
+		return basePermissions; // resident
 	}
 
 	// ==================== Inventory Methods ====================
@@ -165,6 +319,11 @@ export class PostgresAdapter implements DatabaseAdapter {
 		return this.db.select().from(transactions);
 	}
 
+	async getTransactionByPurchaseId(purchaseId: string): Promise<Transaction | null> {
+		const result = await this.db.select().from(transactions).where(eq(transactions.purchaseId, purchaseId)).limit(1);
+		return result[0] ?? null;
+	}
+
 	async createTransaction(transaction: NewTransaction): Promise<Transaction> {
 		const result = await this.db.insert(transactions).values(transaction).returning();
 		return result[0];
@@ -274,4 +433,35 @@ export class PostgresAdapter implements DatabaseAdapter {
 		const result = await this.db.delete(socialLinks).where(eq(socialLinks.id, id)).returning();
 		return result.length > 0;
 	}
+
+	// ==================== App Settings Methods ====================
+	async getSetting(key: string): Promise<string | null> {
+		const result = await this.db.select().from(appSettings).where(eq(appSettings.key, key)).limit(1);
+		return result[0]?.value ?? null;
+	}
+
+	async setSetting(key: string, value: string, description?: string): Promise<AppSetting> {
+		// Upsert: insert or update
+		const existing = await this.db.select().from(appSettings).where(eq(appSettings.key, key)).limit(1);
+		if (existing[0]) {
+			const result = await this.db.update(appSettings)
+				.set({ value, ...(description && { description }), updatedAt: new Date() })
+				.where(eq(appSettings.key, key))
+				.returning();
+			return result[0];
+		}
+		const result = await this.db.insert(appSettings).values({ key, value, description }).returning();
+		return result[0];
+	}
+
+	async getAllSettings(): Promise<AppSetting[]> {
+		return this.db.select().from(appSettings);
+	}
+
+	async deleteSetting(key: string): Promise<boolean> {
+		const result = await this.db.delete(appSettings).where(eq(appSettings.key, key)).returning();
+		return result.length > 0;
+	}
 }
+
+

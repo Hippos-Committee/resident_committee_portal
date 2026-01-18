@@ -42,6 +42,7 @@ interface ReimbursementEmailData {
     purchaserName: string;
     bankAccount: string;
     minutesReference: string;
+    minutesUrl?: string;
     notes?: string;
 }
 
@@ -148,7 +149,7 @@ export async function parseReimbursementReply(content: string): Promise<"approve
 export async function sendReimbursementEmail(
     data: ReimbursementEmailData,
     purchaseId: string,
-    receiptFile?: EmailAttachment,
+    receiptFiles?: EmailAttachment[],
     minutesFile?: EmailAttachment
 ): Promise<SendEmailResult> {
     if (!emailConfig.recipientEmail) {
@@ -176,20 +177,22 @@ export async function sendReimbursementEmail(
                 <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Summa / Amount:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${data.itemValue} €</td></tr>
                 <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Ostaja / Purchaser:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${data.purchaserName}</td></tr>
                 <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Tilinumero / Bank Account:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${data.bankAccount}</td></tr>
-                <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Pöytäkirja / Minutes:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${data.minutesReference}</td></tr>
+                <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Pöytäkirja / Minutes:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${data.minutesUrl ? `<a href="${data.minutesUrl}" target="_blank" style="color: #2563eb; text-decoration: underline;">${data.minutesReference}</a>` : data.minutesReference}</td></tr>
                 ${data.notes ? `<tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Lisätiedot / Notes:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${data.notes}</td></tr>` : ""}
             </table>
-            <p style="margin-top: 16px; color: #666;">Liitteet / Attachments: Kuitti${minutesFile ? " + Pöytäkirja" : ""}</p>
+            <p style="margin-top: 16px; color: #666;">Liitteet / Attachments: ${receiptFiles && receiptFiles.length > 0 ? `${receiptFiles.length} kuittia / receipts` : "Ei kuitteja / No receipts"}${minutesFile ? " + Pöytäkirja" : ""}</p>
             ${replyTo ? `<p style="margin-top: 8px; color: #888; font-size: 12px;">Vastaa tähän viestiin hyväksyäksesi tai hylätäksesi pyynnön.<br/>Reply to this email to approve or reject the request.</p>` : ""}
         `;
 
         const attachments: { filename: string; content: string }[] = [];
 
-        if (receiptFile) {
-            attachments.push({
-                filename: receiptFile.name,
-                content: receiptFile.content,
-            });
+        if (receiptFiles && receiptFiles.length > 0) {
+            for (const receiptFile of receiptFiles) {
+                attachments.push({
+                    filename: receiptFile.name,
+                    content: receiptFile.content,
+                });
+            }
         }
 
         if (minutesFile) {

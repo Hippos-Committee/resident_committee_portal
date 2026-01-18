@@ -1,6 +1,7 @@
 import type { Route } from "./+types/treasury.new";
-import { Form, redirect, useNavigate, useFetcher } from "react-router";
-import { useState } from "react";
+import { Form, redirect, useNavigate, useFetcher, useActionData, useNavigation } from "react-router";
+import { useState, useEffect } from "react";
+import { toast } from "sonner";
 import { requirePermission } from "~/lib/auth.server";
 import { getDatabase, type NewTransaction, type NewPurchase, type NewInventoryItem, type InventoryItem } from "~/db";
 import { getMinutesByYear } from "~/lib/google.server";
@@ -26,14 +27,24 @@ import {
     DialogTitle,
     DialogTrigger,
 } from "~/components/ui/dialog";
-import { InventoryPicker } from "~/components/inventory-picker";
+import { TransactionItemList, type TransactionItem } from "~/components/treasury/transaction-item-list";
+import { useNewTransaction } from "~/contexts/new-transaction-context";
 
 // Category options for transactions
-const CATEGORY_OPTIONS = [
+
+const EXPENSE_CATEGORIES = [
     { value: "inventory", label: "Tavarat / Inventory" },
     { value: "snacks", label: "Eväät / Snacks" },
     { value: "supplies", label: "Tarvikkeet / Supplies" },
     { value: "event", label: "Tapahtuma / Event" },
+    { value: "other", label: "Muu / Other" },
+] as const;
+
+const INCOME_CATEGORIES = [
+    { value: "grant", label: "Avustus / Grant" },
+    { value: "sales", label: "Myynti / Sales" },
+    { value: "event_income", label: "Tapahtumatulo / Event Income" },
+    { value: "membership", label: "Jäsenmaksut / Membership Fees" },
     { value: "other", label: "Muu / Other" },
 ] as const;
 
@@ -50,30 +61,46 @@ export async function loader({ request }: Route.LoaderArgs) {
 
     // Parse URL params for pre-fill
     const url = new URL(request.url);
-    const itemIds = url.searchParams.get("items")?.split(",").filter(Boolean) || [];
+
+    // Items can be passed as JSON array [{itemId, quantity}] or comma-separated IDs (legacy)
+    const itemsParam = url.searchParams.get("items");
+    let itemSelections: { itemId: string; quantity: number }[] = [];
+
+    if (itemsParam) {
+        try {
+            // Try parsing as JSON first (new format from QuantitySelectionModal)
+            itemSelections = JSON.parse(itemsParam);
+        } catch {
+            // Fallback to comma-separated IDs (legacy format)
+            const itemIds = itemsParam.split(",").filter(Boolean);
+            itemSelections = itemIds.map(id => ({ itemId: id, quantity: 1 }));
+        }
+    }
+
     const prefillAmount = url.searchParams.get("amount") || "";
     const prefillDescription = url.searchParams.get("description") || "";
     const prefillType = url.searchParams.get("type") as "income" | "expense" | null;
-    const prefillCategory = url.searchParams.get("category") || (itemIds.length > 0 ? "inventory" : "");
+    const prefillCategory = url.searchParams.get("category") || (itemSelections.length > 0 ? "inventory" : "");
 
-    // If items provided, fetch their details
-    let linkedItems: { id: string; name: string; quantity: number; value: string | null }[] = [];
-    if (itemIds.length > 0) {
-        for (const id of itemIds) {
-            const item = await db.getInventoryItemById(id);
+    // If items provided, fetch their details with requested quantities
+    let linkedItems: { id: string; name: string; quantity: number; requestedQuantity: number; value: string | null }[] = [];
+    if (itemSelections.length > 0) {
+        for (const sel of itemSelections) {
+            const item = await db.getInventoryItemById(sel.itemId);
             if (item) {
                 linkedItems.push({
                     id: item.id,
                     name: item.name,
                     quantity: item.quantity,
+                    requestedQuantity: sel.quantity, // The quantity user wants to link
                     value: item.value,
                 });
             }
         }
     }
 
-    // Get inventory items without linked transactions (for picker)
-    const unlinkedInventoryItems = await db.getInventoryItemsWithoutTransactions();
+    // Get inventory items available for picker (active, non-legacy, with available quantity)
+    const pickerItems = await db.getInventoryItemsForPicker();
 
     // Get unique locations and categories for picker filters
     const allInventoryItems = await db.getInventoryItems();
@@ -86,6 +113,7 @@ export async function loader({ request }: Route.LoaderArgs) {
         year.files.map(file => ({
             id: file.id,
             name: file.name,
+            url: file.url,
             year: year.year,
         }))
     ).slice(0, 20);
@@ -101,11 +129,11 @@ export async function loader({ request }: Route.LoaderArgs) {
             description: prefillDescription,
             type: prefillType || "expense",
             category: prefillCategory,
-            itemIds: itemIds.join(","),
+            itemIds: itemSelections.map(s => s.itemId).join(","),
         },
         linkedItems,
-        // Inventory picker data
-        unlinkedInventoryItems,
+        // Inventory picker data - now includes availableQuantity
+        pickerItems,
         uniqueLocations,
         uniqueCategories,
     };
@@ -138,7 +166,7 @@ export async function action({ request }: Route.ActionArgs) {
         };
 
         const item = await db.createInventoryItem(newItem);
-        return { success: true, item };
+        return { success: true, item, message: "Inventory item created successfully" };
     }
 
     const type = formData.get("type") as "income" | "expense";
@@ -160,8 +188,16 @@ export async function action({ request }: Route.ActionArgs) {
         const purchaserName = formData.get("purchaserName") as string;
         const bankAccount = formData.get("bankAccount") as string;
         const minutesId = formData.get("minutesId") as string;
+        const minutesName = formData.get("minutesName") as string;
+        let minutesUrl = formData.get("minutesUrl") as string;
+
+        // Ensure we have a valid URL for the minutes
+        if (!minutesUrl && minutesId) {
+            minutesUrl = `https://drive.google.com/file/d/${minutesId}/view`;
+        }
+
         const notes = formData.get("notes") as string;
-        const receiptFile = formData.get("receipt") as File | null;
+        const receiptFiles = formData.getAll("receipt") as File[];
 
         const newPurchase: NewPurchase = {
             description,
@@ -169,7 +205,7 @@ export async function action({ request }: Route.ActionArgs) {
             purchaserName,
             bankAccount,
             minutesId,
-            minutesName: null,
+            minutesName: minutesName || null,
             notes: notes || null,
             status: "pending",
             year,
@@ -179,69 +215,47 @@ export async function action({ request }: Route.ActionArgs) {
         const purchase = await db.createPurchase(newPurchase);
         purchaseId = purchase.id;
 
-        // Send email with receipt if file provided
-        if (receiptFile && receiptFile.size > 0) {
-            try {
+        // Process attachments
+        const receiptAttachments: { name: string; type: string; content: string }[] = [];
+        for (const receiptFile of receiptFiles) {
+            if (receiptFile && receiptFile.size > 0) {
                 const arrayBuffer = await receiptFile.arrayBuffer();
-                const base64Content = Buffer.from(arrayBuffer).toString("base64");
-
-                const emailResult = await sendReimbursementEmail(
-                    {
-                        itemName: description,
-                        itemValue: amount,
-                        purchaserName,
-                        bankAccount,
-                        minutesReference: minutesId || "Ei määritetty / Not specified",
-                        notes,
-                    },
-                    purchase.id,
-                    {
-                        name: receiptFile.name,
-                        type: receiptFile.type,
-                        content: base64Content,
-                    }
-                );
-
-                if (emailResult.success) {
-                    await db.updatePurchase(purchase.id, {
-                        emailSent: true,
-                        emailMessageId: emailResult.messageId,
-                    });
-                } else {
-                    await db.updatePurchase(purchase.id, { emailError: emailResult.error || "Unknown error" });
-                }
-            } catch (error) {
-                await db.updatePurchase(purchase.id, {
-                    emailError: error instanceof Error ? error.message : "Unknown error",
+                receiptAttachments.push({
+                    name: receiptFile.name,
+                    type: receiptFile.type,
+                    content: Buffer.from(arrayBuffer).toString("base64"),
                 });
             }
-        } else {
-            // Send email without attachment
-            try {
-                const emailResult = await sendReimbursementEmail(
-                    {
-                        itemName: description,
-                        itemValue: amount,
-                        purchaserName,
-                        bankAccount,
-                        minutesReference: minutesId || "Ei määritetty / Not specified",
-                        notes,
-                    },
-                    purchase.id
-                );
-                if (emailResult.success) {
-                    await db.updatePurchase(purchase.id, {
-                        emailSent: true,
-                        emailMessageId: emailResult.messageId,
-                    });
-                } else {
-                    await db.updatePurchase(purchase.id, { emailError: emailResult.error || "Unknown error" });
-                }
-            } catch (error) {
+        }
+
+        // Send email
+        try {
+            const emailResult = await sendReimbursementEmail(
+                {
+                    itemName: description,
+                    itemValue: amount,
+                    purchaserName,
+                    bankAccount,
+                    minutesReference: minutesName || minutesId || "Ei määritetty / Not specified",
+                    minutesUrl,
+                    notes,
+                },
+                purchase.id,
+                receiptAttachments.length > 0 ? receiptAttachments : undefined
+            );
+
+            if (emailResult.success) {
                 await db.updatePurchase(purchase.id, {
-                    emailError: error instanceof Error ? error.message : "Unknown error",
+                    emailSent: true,
+                    emailMessageId: emailResult.messageId,
                 });
+            } else {
+                await db.updatePurchase(purchase.id, { emailError: emailResult.error || "Unknown email error" });
             }
+        } catch (error) {
+            await db.updatePurchase(purchase.id, {
+                emailError: error instanceof Error ? error.message : "Unknown error",
+            });
         }
     }
 
@@ -264,14 +278,24 @@ export async function action({ request }: Route.ActionArgs) {
     if (linkedItemIds) {
         const ids = linkedItemIds.split(",").filter(Boolean);
         for (const itemId of ids) {
-            const item = await db.getInventoryItemById(itemId);
-            if (item) {
-                await db.linkInventoryItemToTransaction(itemId, transaction.id, item.quantity);
+            // Get quantity from the hidden form field (set by context items)
+            const quantityField = formData.get(`itemQuantity_${itemId}`) as string;
+            const quantity = quantityField ? parseInt(quantityField) : null;
+
+            if (quantity && quantity > 0) {
+                // Use the specified quantity
+                await db.linkInventoryItemToTransaction(itemId, transaction.id, quantity);
+            } else {
+                // Fallback: get from item (legacy behavior for picker-selected items)
+                const item = await db.getInventoryItemById(itemId);
+                if (item) {
+                    await db.linkInventoryItemToTransaction(itemId, transaction.id, item.quantity);
+                }
             }
         }
     }
 
-    return redirect(`/treasury?year=${year}`);
+    return redirect(`/treasury?year=${year}&success=Transaction created`);
 }
 
 export default function NewTransaction({ loaderData }: Route.ComponentProps) {
@@ -281,41 +305,79 @@ export default function NewTransaction({ loaderData }: Route.ComponentProps) {
         emailConfigured,
         prefill,
         linkedItems,
-        unlinkedInventoryItems,
+        pickerItems,
         uniqueLocations,
         uniqueCategories,
     } = loaderData ?? {
         currentYear: new Date().getFullYear(),
-        recentMinutes: [] as Array<{ id: string; name: string; year: number }>,
+        recentMinutes: [] as Array<{ id: string; name: string; url?: string; year: number }>,
         emailConfigured: false,
         prefill: { amount: "", description: "", type: "expense" as const, category: "", itemIds: "" },
         linkedItems: [] as Array<{ id: string; name: string; quantity: number; value: string | null }>,
-        unlinkedInventoryItems: [] as InventoryItem[],
+        pickerItems: [] as (InventoryItem & { availableQuantity: number })[],
         uniqueLocations: [] as string[],
         uniqueCategories: [] as string[],
     };
     const navigate = useNavigate();
     const fetcher = useFetcher();
+    const actionData = useActionData<typeof action>();
+    const navigation = useNavigation();
+    const isSubmitting = navigation.state === "submitting" || fetcher.state === "submitting";
+
+    // Get items from context (set by inventory page)
+    const { items: contextItems, setItems, addItem, updateItemQuantity, removeItem, clearItems } = useNewTransaction();
+
     const [requestReimbursement, setRequestReimbursement] = useState(false);
-    const [inventoryOpen, setInventoryOpen] = useState(false);
+    const [transactionType, setTransactionType] = useState<"income" | "expense">(prefill.type);
+    const [amount, setAmount] = useState(prefill.amount || "");
+    const [selectedMinutes, setSelectedMinutes] = useState<{ id: string; name: string; url?: string } | null>(recentMinutes[0] || null);
+
+    useEffect(() => {
+        if (actionData && 'error' in actionData && actionData.error) {
+            toast.error(typeof actionData.error === 'string' ? actionData.error : "Failed to create transaction");
+        }
+
+        // Handle fetcher success (inventory item creation)
+        if (fetcher.data && 'success' in fetcher.data && fetcher.data.success) {
+            toast.success("Inventory item created");
+        }
+    }, [actionData, fetcher.data]);
 
     // State for category and selected inventory items
-    const [selectedCategory, setSelectedCategory] = useState(prefill.category || "");
+    const [selectedCategory, setSelectedCategory] = useState(prefill.category || (contextItems.length > 0 ? "inventory" : ""));
+
+    // Update category options based on type
+    const categoryOptions = transactionType === "income" ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
+
+    // Use context items for the transaction
+    // selectedItemIds track which items are selected (for form submission)
     const [selectedItemIds, setSelectedItemIds] = useState<string[]>(
-        prefill.itemIds ? prefill.itemIds.split(",").filter(Boolean) : []
+        contextItems.length > 0
+            ? contextItems.map(i => i.itemId)
+            : prefill.itemIds ? prefill.itemIds.split(",").filter(Boolean) : []
     );
 
-    // Combined items: unlinked + any pre-selected linked items (for editing)
-    // Dedupe by ID to avoid showing items twice
-    const availableItemsMap = new Map<string, InventoryItem>();
+    // Sync amount with inventory items total when quantities change
+    useEffect(() => {
+        if (contextItems.length > 0 && !prefill.amount) {
+            const total = contextItems.reduce((sum, item) => sum + (item.quantity * item.unitValue), 0);
+            if (total > 0) {
+                setAmount(total.toFixed(2));
+            }
+        }
+    }, [contextItems, prefill.amount]);
 
-    // Add unlinked items first (these have full data)
-    for (const item of unlinkedInventoryItems) {
+    // Combined items: picker items + any pre-selected linked items (for editing)
+    // pickerItems now has availableQuantity which shows how many can still be linked
+    const availableItemsMap = new Map<string, InventoryItem & { availableQuantity?: number }>();
+
+    // Add picker items first (these have full data including availableQuantity)
+    for (const item of pickerItems) {
         availableItemsMap.set(item.id, item);
     }
 
     // Only add linked items if they're NOT already in the map
-    // (linked items have sparse data, so we prefer unlinked ones)
+    // (linked items have sparse data, so we prefer picker ones)
     for (const li of linkedItems) {
         if (!availableItemsMap.has(li.id)) {
             availableItemsMap.set(li.id, {
@@ -327,7 +389,13 @@ export default function NewTransaction({ loaderData }: Route.ComponentProps) {
                 purchasedAt: null,
                 createdAt: new Date(),
                 updatedAt: new Date(),
-            } as InventoryItem);
+                status: "active",
+                removedAt: null,
+                removalReason: null,
+                removalNotes: null,
+                manualCount: 0,
+                availableQuantity: li.quantity,
+            } as InventoryItem & { availableQuantity: number });
         }
     }
 
@@ -336,14 +404,16 @@ export default function NewTransaction({ loaderData }: Route.ComponentProps) {
     // Generate year options (last 5 years)
     const yearOptions = Array.from({ length: 5 }, (_, i) => currentYear - i);
 
-    // Calculate total from selected items
-    const selectedItemsTotal = selectedItemIds.reduce((sum, id) => {
-        const item = availableItems.find(i => i.id === id);
-        if (item?.value) {
-            return sum + (parseFloat(item.value) * (item.quantity || 1));
-        }
-        return sum;
-    }, 0);
+    // Calculate total from selected items using context quantities
+    const selectedItemsTotal = contextItems.length > 0
+        ? contextItems.reduce((sum, ctxItem) => sum + (ctxItem.quantity * ctxItem.unitValue), 0)
+        : selectedItemIds.reduce((sum, id) => {
+            const item = availableItems.find(i => i.id === id);
+            if (item?.value) {
+                return sum + (parseFloat(item.value) * (item.quantity || 1));
+            }
+            return sum;
+        }, 0);
 
     // Handler for adding new inventory item from picker
     const handleAddItem = async (itemData: {
@@ -395,7 +465,13 @@ export default function NewTransaction({ loaderData }: Route.ComponentProps) {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="space-y-2">
                                 <Label htmlFor="type">Tyyppi / Type *</Label>
-                                <Select name="type" defaultValue={prefill.type} required>
+                                <Select
+                                    name="type"
+                                    defaultValue={prefill.type}
+                                    value={transactionType}
+                                    onValueChange={(val: "income" | "expense") => setTransactionType(val)}
+                                    required
+                                >
                                     <SelectTrigger>
                                         <SelectValue placeholder="Valitse tyyppi..." />
                                     </SelectTrigger>
@@ -425,7 +501,8 @@ export default function NewTransaction({ loaderData }: Route.ComponentProps) {
                                     min="0.01"
                                     required
                                     placeholder="0.00"
-                                    defaultValue={prefill.amount}
+                                    value={amount}
+                                    onChange={(e) => setAmount(e.target.value)}
                                 />
                             </div>
                         </div>
@@ -454,7 +531,7 @@ export default function NewTransaction({ loaderData }: Route.ComponentProps) {
                                         <SelectValue placeholder="Valitse kategoria..." />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        {CATEGORY_OPTIONS.map(opt => (
+                                        {categoryOptions.map(opt => (
                                             <SelectItem key={opt.value} value={opt.value}>
                                                 {opt.label}
                                             </SelectItem>
@@ -493,188 +570,148 @@ export default function NewTransaction({ loaderData }: Route.ComponentProps) {
 
                     {/* Inventory Selection Section - shown when category is "inventory" */}
                     {selectedCategory === "inventory" && (
-                        <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-200 dark:border-gray-700 space-y-4">
-                            <div className="flex justify-between items-start">
-                                <div>
-                                    <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                                        <span className="material-symbols-outlined">inventory_2</span>
-                                        Tavarat / Items
-                                    </h2>
-                                    <p className="text-sm text-gray-500 mt-1">
-                                        {selectedItemIds.length === 0
-                                            ? "Ei valittuja tavaroita / No items selected"
-                                            : `${selectedItemIds.length} tavaraa valittu / items selected`
-                                        }
-                                    </p>
-                                </div>
-                                {selectedItemsTotal > 0 && (
-                                    <div className="text-right">
-                                        <span className="block text-sm font-medium text-gray-500">Yhteensä / Total</span>
-                                        <span className="text-lg font-bold text-primary">
-                                            {selectedItemsTotal.toFixed(2).replace(".", ",")} €
-                                        </span>
-                                    </div>
-                                )}
-                            </div>
+                        <div className="space-y-4">
+                            <TransactionItemList
+                                items={contextItems}
+                                onItemsChange={(newItems) => {
+                                    setItems(newItems);
+                                    // Sync selected IDs just in case other logic depends on it
+                                    setSelectedItemIds(newItems.map(i => i.itemId));
+                                }}
+                                availableItems={availableItems}
+                                uniqueLocations={uniqueLocations}
+                                uniqueCategories={uniqueCategories}
+                                onAddNewItem={handleAddItem}
+                                description="Valitse listalta tai lisää uusi tavara. Valitut tavarat lisätään uuteen tapahtumaan. / Select from list or add new. Selected items will be added to the new transaction."
+                            />
 
-                            {/* Selected Items List (Preview) */}
-                            {selectedItemIds.length > 0 && (
-                                <div className="space-y-2 border-t border-gray-100 dark:border-gray-700 pt-3">
-                                    {selectedItemIds.map(id => {
-                                        const item = availableItems.find(i => i.id === id);
-                                        if (!item) return null;
-                                        return (
-                                            <div key={id} className="flex justify-between items-center text-sm bg-gray-50 dark:bg-gray-900/50 p-2 rounded-lg">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="material-symbols-outlined text-gray-400 text-lg">package_2</span>
-                                                    <span>{item.name} <span className="text-gray-500 text-xs">x{item.quantity}</span></span>
-                                                </div>
-                                                {item.value && item.value !== "0" && (
-                                                    <span className="text-gray-500 font-mono">
-                                                        {(parseFloat(item.value) * item.quantity).toFixed(2).replace(".", ",")} €
-                                                    </span>
-                                                )}
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            )}
-
-                            <Dialog open={inventoryOpen} onOpenChange={setInventoryOpen}>
-                                <DialogTrigger asChild>
-                                    <Button
-                                        type="button"
-                                        variant="outline"
-                                        className="w-full border-dashed border-2 py-8 hover:bg-gray-50 dark:hover:bg-gray-800"
-                                    >
-                                        <span className="material-symbols-outlined mr-2">add_circle</span>
-                                        {selectedItemIds.length > 0 ? "Muokkaa valintaa / Edit Selection" : "Valitse tavarat / Select Items"}
-                                    </Button>
-                                </DialogTrigger>
-                                <DialogContent className="max-w-4xl h-[80vh] flex flex-col p-6">
-                                    <DialogHeader>
-                                        <DialogTitle>Valitse tavarat / Select Items</DialogTitle>
-                                        <DialogDescription>
-                                            Valitse listalta tai lisää uusi tavara. / Select from list or add new.
-                                        </DialogDescription>
-                                    </DialogHeader>
-                                    <div className="flex-1 overflow-auto min-h-0 -mx-2 px-2">
-                                        <InventoryPicker
-                                            items={availableItems}
-                                            uniqueLocations={uniqueLocations}
-                                            uniqueCategories={uniqueCategories}
-                                            selectedIds={selectedItemIds}
-                                            onSelectionChange={setSelectedItemIds}
-                                            onAddItem={handleAddItem}
-                                            compact={false}
-                                            showUnlinkedBadge={true}
-                                        />
-                                    </div>
-                                    <div className="flex justify-end pt-4 border-t border-gray-100 dark:border-gray-700">
-                                        <Button onClick={() => setInventoryOpen(false)}>
-                                            Valmis / Done
-                                        </Button>
-                                    </div>
-                                </DialogContent>
-                            </Dialog>
+                            {/* Hidden inputs for form submission */}
+                            {contextItems.map(ctxItem => (
+                                <input
+                                    key={`qty-${ctxItem.itemId}`}
+                                    type="hidden"
+                                    name={`itemQuantity_${ctxItem.itemId}`}
+                                    value={ctxItem.quantity}
+                                />
+                            ))}
                         </div>
                     )}
 
-                    {/* Reimbursement Section */}
-                    <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-200 dark:border-gray-700 space-y-4">
-                        <div className="flex items-center gap-3">
-                            <Checkbox
-                                id="requestReimbursement"
-                                name="requestReimbursement"
-                                checked={requestReimbursement}
-                                onCheckedChange={(checked) => setRequestReimbursement(checked === true)}
-                            />
-                            <Label htmlFor="requestReimbursement" className="text-lg font-bold cursor-pointer">
-                                Hae kulukorvausta / Request Reimbursement
-                            </Label>
-                        </div>
+                    {/* Reimbursement Section - Only for expenses */}
+                    {transactionType === "expense" && (
+                        <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-200 dark:border-gray-700 space-y-4">
+                            <div className="flex items-center gap-3">
+                                <Checkbox
+                                    id="requestReimbursement"
+                                    name="requestReimbursement"
+                                    checked={requestReimbursement}
+                                    onCheckedChange={(checked) => setRequestReimbursement(checked === true)}
+                                />
+                                <Label htmlFor="requestReimbursement" className="text-lg font-bold cursor-pointer">
+                                    Hae kulukorvausta / Request Reimbursement
+                                </Label>
+                            </div>
 
-                        <p className="text-sm text-gray-500 dark:text-gray-400">
-                            Valitse jos haluat hakea kulukorvausta tästä menosta määrärahasta.
-                            <br />
-                            Check if you want to request reimbursement from the allowance.
-                        </p>
+                            <p className="text-sm text-gray-500 dark:text-gray-400">
+                                Valitse jos haluat hakea kulukorvausta tästä menosta määrärahasta.
+                                <br />
+                                Check if you want to request reimbursement from the allowance.
+                            </p>
 
-                        {requestReimbursement && (
-                            <div className="space-y-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-                                {!emailConfigured && (
-                                    <div className="p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
-                                        <p className="text-sm text-yellow-800 dark:text-yellow-200">
-                                            ⚠️ Sähköpostilähetys ei ole konfiguroitu. Pyyntö tallennetaan, mutta sähköpostia ei lähetetä.
-                                            <br />
-                                            Email sending is not configured. Request will be saved but email won't be sent.
+                            {requestReimbursement && (
+                                <div className="space-y-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                                    {!emailConfigured && (
+                                        <div className="p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+                                            <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                                                ⚠️ Sähköpostilähetys ei ole konfiguroitu. Pyyntö tallennetaan, mutta sähköpostia ei lähetetä.
+                                                <br />
+                                                Email sending is not configured. Request will be saved but email won't be sent.
+                                            </p>
+                                        </div>
+                                    )}
+
+                                    <div className="space-y-2">
+                                        <Label htmlFor="receipt">Kuitit / Receipts (PDF tai kuva) *</Label>
+                                        <Input
+                                            id="receipt"
+                                            name="receipt"
+                                            type="file"
+                                            accept=".pdf,.jpg,.jpeg,.png,.webp"
+                                            required={requestReimbursement}
+                                            multiple
+                                        />
+                                        <p className="text-xs text-muted-foreground">
+                                            Voit valita useita tiedostoja (Ctrl/Cmd + klikkaus) / Select multiple files (Ctrl/Cmd + click)
                                         </p>
                                     </div>
-                                )}
 
-                                <div className="space-y-2">
-                                    <Label htmlFor="receipt">Kuitti / Receipt (PDF tai kuva) *</Label>
-                                    <Input
-                                        id="receipt"
-                                        name="receipt"
-                                        type="file"
-                                        accept=".pdf,.jpg,.jpeg,.png,.webp"
-                                        required={requestReimbursement}
-                                    />
-                                </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div className="space-y-2">
+                                            <Label htmlFor="purchaserName">Ostajan nimi / Purchaser Name *</Label>
+                                            <Input
+                                                id="purchaserName"
+                                                name="purchaserName"
+                                                required={requestReimbursement}
+                                                placeholder="Etu- ja sukunimi"
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label htmlFor="bankAccount">Tilinumero (IBAN) / Bank Account *</Label>
+                                            <Input
+                                                id="bankAccount"
+                                                name="bankAccount"
+                                                required={requestReimbursement}
+                                                placeholder="FI12 3456 7890 1234 56"
+                                            />
+                                        </div>
+                                    </div>
 
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div className="space-y-2">
-                                        <Label htmlFor="purchaserName">Ostajan nimi / Purchaser Name *</Label>
-                                        <Input
-                                            id="purchaserName"
-                                            name="purchaserName"
+                                        <Label htmlFor="minutesId">Pöytäkirja / Related Minutes *</Label>
+                                        <Select
+                                            name="minutesId"
+                                            defaultValue={recentMinutes[0]?.id || ""}
                                             required={requestReimbursement}
-                                            placeholder="Etu- ja sukunimi"
+                                            onValueChange={(value) => {
+                                                const selected = recentMinutes.find(m => m.id === value);
+                                                setSelectedMinutes(selected || null);
+                                            }}
+                                        >
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Valitse pöytäkirja..." />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {recentMinutes.map((minute) => (
+                                                    <SelectItem key={minute.id} value={minute.id}>
+                                                        {minute.name} ({minute.year})
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                        <input type="hidden" name="minutesName" value={selectedMinutes?.name || ""} />
+                                        <input
+                                            type="hidden"
+                                            name="minutesUrl"
+                                            value={selectedMinutes?.url || (selectedMinutes?.id ? `https://drive.google.com/file/d/${selectedMinutes.id}/view` : "")}
+                                        />
+                                        <p className="text-xs text-gray-500">
+                                            Yli 100€ hankinnoissa pöytäkirja vaaditaan ennen maksua.
+                                        </p>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <Label htmlFor="notes">Lisätiedot / Additional Notes</Label>
+                                        <textarea
+                                            id="notes"
+                                            name="notes"
+                                            className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 min-h-[80px]"
+                                            placeholder="Vapaamuotoinen viesti..."
                                         />
                                     </div>
-                                    <div className="space-y-2">
-                                        <Label htmlFor="bankAccount">Tilinumero (IBAN) / Bank Account *</Label>
-                                        <Input
-                                            id="bankAccount"
-                                            name="bankAccount"
-                                            required={requestReimbursement}
-                                            placeholder="FI12 3456 7890 1234 56"
-                                        />
-                                    </div>
                                 </div>
-
-                                <div className="space-y-2">
-                                    <Label htmlFor="minutesId">Pöytäkirja / Related Minutes *</Label>
-                                    <Select name="minutesId" defaultValue={recentMinutes[0]?.id || ""} required={requestReimbursement}>
-                                        <SelectTrigger>
-                                            <SelectValue placeholder="Valitse pöytäkirja..." />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {recentMinutes.map((minute) => (
-                                                <SelectItem key={minute.id} value={minute.id}>
-                                                    {minute.name} ({minute.year})
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                    <p className="text-xs text-gray-500">
-                                        Yli 100€ hankinnoissa pöytäkirja vaaditaan ennen maksua.
-                                    </p>
-                                </div>
-
-                                <div className="space-y-2">
-                                    <Label htmlFor="notes">Lisätiedot / Additional Notes</Label>
-                                    <textarea
-                                        id="notes"
-                                        name="notes"
-                                        className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 min-h-[80px]"
-                                        placeholder="Vapaamuotoinen viesti..."
-                                    />
-                                </div>
-                            </div>
-                        )}
-                    </div>
+                            )}
+                        </div>
+                    )}
 
                     <div className="flex gap-4">
                         <Button
@@ -685,16 +722,25 @@ export default function NewTransaction({ loaderData }: Route.ComponentProps) {
                         >
                             Peruuta / Cancel
                         </Button>
-                        <Button type="submit" className="flex-1">
-                            {requestReimbursement
+                        <Button
+                            type="submit"
+                            className="flex-1"
+                            disabled={isSubmitting}
+                        >
+                            {isSubmitting ? (
+                                <span className="flex items-center gap-2">
+                                    <span className="animate-spin material-symbols-outlined text-sm">progress_activity</span>
+                                    <span>Tallennetaan... / Saving...</span>
+                                </span>
+                            ) : requestReimbursement
                                 ? "Lisää ja hae korvausta / Add & Request Reimbursement"
                                 : "Lisää / Add"
                             }
                         </Button>
                     </div>
-                </Form>
-            </div>
-        </PageWrapper>
+                </Form >
+            </div >
+        </PageWrapper >
     );
 }
 

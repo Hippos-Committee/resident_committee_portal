@@ -1,5 +1,5 @@
 import type { Route } from "./+types/treasury.reimbursement.new";
-import { Form, redirect, useNavigate, useActionData } from "react-router";
+import { Form, redirect, useNavigate, useActionData, useNavigation } from "react-router";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { requirePermission } from "~/lib/auth.server";
@@ -23,6 +23,7 @@ import {
 interface MinuteFile {
     id: string;
     name: string;
+    url: string;
     year: string;
 }
 
@@ -41,6 +42,7 @@ export async function loader({ request }: Route.LoaderArgs) {
         year.files.map(file => ({
             id: file.id,
             name: file.name,
+            url: file.url,
             year: year.year,
         }))
     ).slice(0, 20);
@@ -64,9 +66,15 @@ export async function action({ request }: Route.ActionArgs) {
     const bankAccount = formData.get("bankAccount") as string;
     const minutesId = formData.get("minutesId") as string;
     const minutesName = formData.get("minutesName") as string;
+    let minutesUrl = formData.get("minutesUrl") as string;
+
+    // Ensure we have a valid URL for the minutes
+    if (!minutesUrl && minutesId) {
+        minutesUrl = `https://drive.google.com/file/d/${minutesId}/view`;
+    }
     const notes = formData.get("notes") as string;
     const addToInventory = formData.get("addToInventory") === "on";
-    const receiptFile = formData.get("receipt") as File | null;
+    const receiptFiles = formData.getAll("receipt") as File[];
     const currentYear = new Date().getFullYear();
 
     let inventoryItemId: string | null = null;
@@ -106,16 +114,18 @@ export async function action({ request }: Route.ActionArgs) {
 
     const purchase = await db.createPurchase(newPurchase);
 
-    // Send email with receipt and minutes PDF
+    // Send email with receipt(s) and minutes PDF
     try {
-        let receiptAttachment;
-        if (receiptFile && receiptFile.size > 0) {
-            const arrayBuffer = await receiptFile.arrayBuffer();
-            receiptAttachment = {
-                name: receiptFile.name,
-                type: receiptFile.type,
-                content: Buffer.from(arrayBuffer).toString("base64"),
-            };
+        const receiptAttachments: { name: string; type: string; content: string }[] = [];
+        for (const receiptFile of receiptFiles) {
+            if (receiptFile && receiptFile.size > 0) {
+                const arrayBuffer = await receiptFile.arrayBuffer();
+                receiptAttachments.push({
+                    name: receiptFile.name,
+                    type: receiptFile.type,
+                    content: Buffer.from(arrayBuffer).toString("base64"),
+                });
+            }
         }
 
         // Fetch minutes PDF from Google Drive
@@ -142,10 +152,11 @@ export async function action({ request }: Route.ActionArgs) {
                 purchaserName,
                 bankAccount,
                 minutesReference: minutesName || minutesId,
+                minutesUrl,
                 notes,
             },
             purchase.id,
-            receiptAttachment,
+            receiptAttachments.length > 0 ? receiptAttachments : undefined,
             minutesAttachment
         );
 
@@ -172,6 +183,9 @@ export default function NewReimbursement({ loaderData }: Route.ComponentProps) {
     const navigate = useNavigate();
     const [addToInventory, setAddToInventory] = useState(false);
     const [selectedMinutes, setSelectedMinutes] = useState<MinuteFile | null>(recentMinutes[0] || null);
+
+    const navigation = useNavigation();
+    const isSubmitting = navigation.state === "submitting";
 
     return (
         <PageWrapper>
@@ -220,14 +234,18 @@ export default function NewReimbursement({ loaderData }: Route.ComponentProps) {
                                 />
                             </div>
                             <div className="space-y-2">
-                                <Label htmlFor="receipt">Kuitti / Receipt *</Label>
+                                <Label htmlFor="receipt">Kuitit / Receipts *</Label>
                                 <Input
                                     id="receipt"
                                     name="receipt"
                                     type="file"
                                     accept=".pdf,.jpg,.jpeg,.png,.webp"
                                     required
+                                    multiple
                                 />
+                                <p className="text-xs text-muted-foreground">
+                                    Voit valita useita tiedostoja (Ctrl/Cmd + klikkaus) / Select multiple files (Ctrl/Cmd + click)
+                                </p>
                             </div>
                         </div>
                     </div>
@@ -261,7 +279,7 @@ export default function NewReimbursement({ loaderData }: Route.ComponentProps) {
                     {/* Minutes Reference */}
                     <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-200 dark:border-gray-700 space-y-4">
                         <h2 className="text-lg font-bold">Pöytäkirja / Minutes *</h2>
-                        <p className="text-sm text-gray-500">Valitse kokous jossa osto hyväksyttiin</p>
+                        <p className="text-sm text-gray-500">Valitse kokous jossa osto hyväksyttiin / Select the meeting where this was approved</p>
 
                         <Select
                             name="minutesId"
@@ -284,6 +302,11 @@ export default function NewReimbursement({ loaderData }: Route.ComponentProps) {
                             </SelectContent>
                         </Select>
                         <input type="hidden" name="minutesName" value={selectedMinutes?.name || ""} />
+                        <input
+                            type="hidden"
+                            name="minutesUrl"
+                            value={selectedMinutes?.url || (selectedMinutes?.id ? `https://drive.google.com/file/d/${selectedMinutes.id}/view` : "")}
+                        />
                     </div>
 
                     {/* Notes */}
@@ -334,8 +357,17 @@ export default function NewReimbursement({ loaderData }: Route.ComponentProps) {
                         >
                             Peruuta / Cancel
                         </Button>
-                        <Button type="submit" className="flex-1">
-                            Lähetä / Submit
+                        <Button
+                            type="submit"
+                            className="flex-1"
+                            disabled={isSubmitting}
+                        >
+                            {isSubmitting ? (
+                                <span className="flex items-center gap-2">
+                                    <span className="animate-spin material-symbols-outlined text-sm">progress_activity</span>
+                                    <span>Lähetetään... / Submitting...</span>
+                                </span>
+                            ) : "Lähetä / Submit"}
                         </Button>
                     </div>
                 </Form>

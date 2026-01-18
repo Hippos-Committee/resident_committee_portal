@@ -198,44 +198,51 @@ export async function getMinutesByYear(): Promise<MinutesByYear[]> {
         console.log(`[getMinutesByYear] Found ${yearFolders.length} year folders`);
 
         // Step 2: For each year folder, look for "minutes" subfolder and get its files
-        const results: MinutesByYear[] = [];
         const currentYear = new Date().getFullYear().toString();
 
-        for (const yearFolder of yearFolders) {
+        // Use Promise.all to fetch years in parallel
+        const yearResults = await Promise.all(yearFolders.map(async (yearFolder: any) => {
             const minutesFolder = await findChildByName(yearFolder.id, "minutes", "application/vnd.google-apps.folder");
 
             if (!minutesFolder) {
                 // If this is the current year and no minutes folder, still include with empty files
                 if (yearFolder.name === currentYear) {
-                    results.push({
+                    return {
                         year: yearFolder.name,
                         files: [],
                         folderUrl: "#"
-                    });
+                    };
                 }
-                continue;
+                return null;
             }
 
             // List files in minutes folder
             const filesQ = `'${minutesFolder.id}' in parents and trashed = false`;
             const filesUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(filesQ)}&orderBy=name desc&key=${config.apiKey}&fields=files(id,name,webViewLink,createdTime)`;
 
-            const filesRes = await fetch(filesUrl);
-            if (!filesRes.ok) continue;
+            try {
+                const filesRes = await fetch(filesUrl);
+                if (!filesRes.ok) return null;
 
-            const filesData = await filesRes.json();
+                const filesData = await filesRes.json();
 
-            results.push({
-                year: yearFolder.name,
-                files: (filesData.files || []).map((f: any) => ({
-                    id: f.id,
-                    name: f.name?.replace(/\.(pdf|docx?)$/i, "") || "Untitled",
-                    url: f.webViewLink,
-                    createdTime: f.createdTime
-                })),
-                folderUrl: minutesFolder.webViewLink || "#"
-            });
-        }
+                return {
+                    year: yearFolder.name,
+                    files: (filesData.files || []).map((f: any) => ({
+                        id: f.id,
+                        name: f.name?.replace(/\.(pdf|docx?)$/i, "") || "Untitled",
+                        url: f.webViewLink,
+                        createdTime: f.createdTime
+                    })),
+                    folderUrl: minutesFolder.webViewLink || "#"
+                };
+            } catch (error) {
+                console.error(`Error fetching files for year ${yearFolder.name}:`, error);
+                return null;
+            }
+        }));
+
+        const results: MinutesByYear[] = yearResults.filter((r): r is MinutesByYear => r !== null);
 
         // Ensure current year is always first (even if no minutes yet)
         const hasCurrentYear = results.some(r => r.year === currentYear);
@@ -281,24 +288,53 @@ export async function getBudgetInfo() {
 
     if (!budgetFile) return null;
 
-    const range = "B2:B4";
+    // Fetch transaction rows: Receipt, Date, Description, Person, Amount, Category
+    // Stop at "---" marker row (summary section)
+    const range = "A2:E";
     const url = `https://sheets.googleapis.com/v4/spreadsheets/${budgetFile.id}/values/${range}?key=${config.apiKey}`;
 
     try {
         const res = await fetch(url);
         if (!res.ok) return null;
         const data = await res.json();
-        const values = data.values;
-        if (!values) return null;
+        const rows = data.values || [];
+
+        let totalIncome = 0;
+        let totalExpenses = 0;
+        let latestDate = "";
+
+        for (const row of rows) {
+            // Stop at marker row (starts with "---")
+            if (row[0]?.toString().startsWith("---")) break;
+
+            // Skip empty rows
+            if (!row[0] || !row[4]) continue;
+
+            const amount = parseFloat(row[4]?.toString().replace(/−/g, "-").replace(",", ".").replace(/[^\d.-]/g, "")) || 0;
+            const date = row[1]?.toString() || "";
+
+            if (amount > 0) {
+                totalIncome += amount;
+            } else {
+                totalExpenses += Math.abs(amount);
+            }
+
+            // Track latest date (simple string comparison works for DD.MM.YYYY if sorted)
+            if (date && date > latestDate) {
+                latestDate = date;
+            }
+        }
+
+        const remaining = totalIncome - totalExpenses;
 
         const result = {
-            remaining: values[0]?.[0] || "--- €",
-            total: values[1]?.[0] || "--- €",
-            lastUpdated: values[2]?.[0] || "",
+            remaining: `${remaining.toFixed(2).replace(".", ",")} €`,
+            total: `${totalIncome.toFixed(2).replace(".", ",")} €`,
+            lastUpdated: latestDate,
             detailsUrl: budgetFile.webViewLink || `https://docs.google.com/spreadsheets/d/${budgetFile.id}`
         };
 
-        console.log(`[getBudgetInfo] Discovered sheet URL: ${result.detailsUrl}`);
+        console.log(`[getBudgetInfo] Calculated from ${rows.length} rows: remaining=${result.remaining}, total=${result.total}`);
 
         // Cache the result
         setCache(CACHE_KEYS.BUDGET, result);
@@ -400,6 +436,98 @@ export async function getInventory(): Promise<InventoryInfo | null> {
     }
 }
 
+// Get all inventory items (for filtering by location)
+export async function getAllInventoryItems(): Promise<{ items: InventoryItem[]; detailsUrl: string } | null> {
+    const yearFolder = await getCurrentYearFolder();
+    if (!yearFolder) return null;
+
+    // Look for "inventory" spreadsheet
+    let inventoryFile = await findChildByName(yearFolder.id, "inventory", "application/vnd.google-apps.spreadsheet");
+
+    // If not found, maybe they named it "inventory.csv" but it IS a spreadsheet
+    if (!inventoryFile) {
+        inventoryFile = await findChildByName(yearFolder.id, "inventory.csv", "application/vnd.google-apps.spreadsheet");
+    }
+
+    if (!inventoryFile) return null;
+
+    // Fetch data starting from row 2 (skip header), columns A:F
+    const range = "A2:F";
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${inventoryFile.id}/values/${range}?key=${config.apiKey}`;
+
+    try {
+        const res = await fetch(url);
+        if (!res.ok) return null;
+        const data = await res.json();
+        const rows = data.values;
+
+        if (!rows || rows.length === 0) {
+            return {
+                items: [],
+                detailsUrl: inventoryFile.webViewLink || `https://docs.google.com/spreadsheets/d/${inventoryFile.id}`
+            };
+        }
+
+        // Parse rows into InventoryItem objects
+        const items: InventoryItem[] = rows
+            .filter((row: string[]) => row[0]) // Must have a name
+            .map((row: string[]) => ({
+                name: row[0] || "",
+                quantity: parseInt(row[1]) || 0,
+                location: row[2] || "",
+                category: row[3] || "",
+                description: row[4] || "",
+                value: parseFloat(row[5]) || 0,
+            }));
+
+        return {
+            items,
+            detailsUrl: inventoryFile.webViewLink || `https://docs.google.com/spreadsheets/d/${inventoryFile.id}`
+        };
+    } catch (error) {
+        console.error("Inventory fetch error:", error);
+        return null;
+    }
+}
+
+// Get inventory items filtered by location
+export async function getInventoryByLocation(location: string): Promise<{ items: InventoryItem[]; location: string; detailsUrl: string } | null> {
+    const allItems = await getAllInventoryItems();
+    if (!allItems) return null;
+
+    // Case-insensitive location matching, also handle URL-encoded strings
+    const decodedLocation = decodeURIComponent(location).toLowerCase();
+    const filteredItems = allItems.items.filter(
+        item => item.location.toLowerCase() === decodedLocation
+    );
+
+    // Find the original location name (with proper casing)
+    const originalLocation = allItems.items.find(
+        item => item.location.toLowerCase() === decodedLocation
+    )?.location || location;
+
+    return {
+        items: filteredItems,
+        location: originalLocation,
+        detailsUrl: allItems.detailsUrl
+    };
+}
+
+// Get all unique locations from inventory
+export async function getInventoryLocations(): Promise<string[]> {
+    const allItems = await getAllInventoryItems();
+    if (!allItems) return [];
+
+    const locations = new Set<string>();
+    for (const item of allItems.items) {
+        if (item.location) {
+            locations.add(item.location);
+        }
+    }
+
+    return Array.from(locations).sort();
+}
+
 // ============================================
 // SOCIAL CHANNELS (from "some" sheet in root)
 // ============================================
@@ -490,6 +618,7 @@ interface FormSubmission {
     type: string;
     name: string;
     email: string;
+    apartmentNumber: string;
     message: string;
 }
 
@@ -569,9 +698,10 @@ export async function saveFormSubmission(submission: FormSubmission): Promise<bo
     const timestamp = new Date().toISOString();
     // Status options: "Uusi / New", "Käsittelyssä / In Progress", "Hyväksytty / Approved", "Hylätty / Rejected", "Valmis / Done"
     const defaultStatus = "Uusi / New";
-    const row = [timestamp, submission.type, submission.name, submission.email, submission.message, defaultStatus];
+    // Column order: Timestamp, Type, Name, Email, Apartment, Message, Status
+    const row = [timestamp, submission.type, submission.name, submission.email, submission.apartmentNumber, submission.message, defaultStatus];
 
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${config.submissionsSheetId}/values/A:F:append?valueInputOption=USER_ENTERED`;
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${config.submissionsSheetId}/values/A:G:append?valueInputOption=USER_ENTERED`;
 
     try {
         const res = await fetch(url, {
@@ -771,5 +901,53 @@ export async function deleteSubmission(rowIndex: number): Promise<boolean> {
     } catch (error) {
         console.error("[deleteSubmission] Error:", error);
         return false;
+    }
+}
+
+// ============================================
+// FILE DOWNLOAD (for email attachments)
+// ============================================
+
+/**
+ * Download a file from Google Drive as base64 string
+ * Used for attaching minutes PDFs to reimbursement emails
+ */
+export async function getFileAsBase64(fileId: string): Promise<string | null> {
+    if (!fileId) {
+        console.error("[getFileAsBase64] Missing fileId");
+        return null;
+    }
+
+    // First try with service account for private files
+    const accessToken = await getServiceAccountAccessToken();
+
+    try {
+        let url: string;
+        let headers: HeadersInit = {};
+
+        if (accessToken) {
+            // Use service account auth for potentially private files
+            url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`;
+            headers = { Authorization: `Bearer ${accessToken}` };
+        } else {
+            // Fallback to API key for public files
+            url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&key=${config.apiKey}`;
+        }
+
+        const res = await fetch(url, { headers });
+
+        if (!res.ok) {
+            console.error(`[getFileAsBase64] Failed to download file ${fileId}: ${res.status}`);
+            return null;
+        }
+
+        const arrayBuffer = await res.arrayBuffer();
+        const base64 = Buffer.from(arrayBuffer).toString("base64");
+
+        console.log(`[getFileAsBase64] Downloaded file ${fileId} (${arrayBuffer.byteLength} bytes)`);
+        return base64;
+    } catch (error) {
+        console.error("[getFileAsBase64] Error:", error);
+        return null;
     }
 }

@@ -52,6 +52,13 @@ export interface SessionData {
     picture?: string;
 }
 
+export interface AuthenticatedUser extends SessionData {
+    userId: string;
+    role: string;
+    roleId: string | null;
+    permissions: string[];
+}
+
 export async function createSession(data: SessionData): Promise<string> {
     return sessionCookie.serialize(data);
 }
@@ -76,55 +83,151 @@ export async function destroySession(): Promise<string> {
 }
 
 // ============================================
-// ADMIN AUTHORIZATION
+// ADMIN CHECK (Used by RBAC for super admin)
 // ============================================
 
+/**
+ * Check if email matches env ADMIN_EMAIL (super admin)
+ */
 export function isAdmin(email: string): boolean {
     return email.toLowerCase() === config.adminEmail.toLowerCase();
 }
 
-export async function requireAdmin(request: Request): Promise<SessionData> {
-    const session = await getSession(request);
+// ============================================
+// RBAC PERMISSION SYSTEM
+// ============================================
 
-    if (!session) {
-        throw new Response("Unauthorized", { status: 401 });
-    }
-
-    if (!isAdmin(session.email)) {
-        throw new Response("Forbidden", { status: 403 });
-    }
-
-    return session;
+/**
+ * Database adapter interface for RBAC operations
+ */
+interface RBACDatabaseAdapter {
+    findUserByEmail: (email: string) => Promise<{ id: string; role: string; roleId: string | null } | null>;
+    getUserPermissions: (userId: string) => Promise<string[]>;
+    getRoleByName: (name: string) => Promise<{ id: string } | null>;
+    getRolePermissions: (roleId: string) => Promise<{ name: string }[]>;
 }
 
 /**
- * Require user to be either admin or board_member
- * Returns session data with role included
+ * Get permissions for the Guest role (unauthenticated users)
+ * Returns empty array if Guest role doesn't exist
  */
-export async function requireStaff(
-    request: Request,
-    getDatabase: () => { findUserByEmail: (email: string) => Promise<{ role: string } | null> }
-): Promise<SessionData & { role: string }> {
-    const session = await getSession(request);
+export async function getGuestPermissions(
+    getDatabase: () => RBACDatabaseAdapter
+): Promise<string[]> {
+    const db = getDatabase();
+    const guestRole = await db.getRoleByName("Guest");
+    if (!guestRole) return [];
+    const permissions = await db.getRolePermissions(guestRole.id);
+    return permissions.map(p => p.name);
+}
 
-    if (!session) {
+/**
+ * Check if a permission matches (supports wildcards)
+ * e.g., "inventory:*" matches "inventory:read", "inventory:write"
+ */
+function permissionMatches(userPermission: string, requiredPermission: string): boolean {
+    // Exact match
+    if (userPermission === requiredPermission) return true;
+
+    // Wildcard match (e.g., "inventory:*" matches "inventory:read")
+    if (userPermission.endsWith(":*")) {
+        const prefix = userPermission.slice(0, -1); // Remove "*"
+        return requiredPermission.startsWith(prefix);
+    }
+
+    // Super admin wildcard
+    if (userPermission === "*") return true;
+
+    return false;
+}
+
+/**
+ * Get authenticated user with their permissions
+ */
+export async function getAuthenticatedUser(
+    request: Request,
+    getDatabase: () => RBACDatabaseAdapter
+): Promise<AuthenticatedUser | null> {
+    const session = await getSession(request);
+    if (!session) return null;
+
+    const db = getDatabase();
+    const dbUser = await db.findUserByEmail(session.email);
+    if (!dbUser) return null;
+
+    const permissions = await db.getUserPermissions(dbUser.id);
+
+    return {
+        ...session,
+        userId: dbUser.id,
+        role: dbUser.role,
+        roleId: dbUser.roleId,
+        permissions,
+    };
+}
+
+/**
+ * Check if user has a specific permission
+ */
+export function hasPermission(user: AuthenticatedUser, permission: string): boolean {
+    return user.permissions.some(p => permissionMatches(p, permission));
+}
+
+/**
+ * Check if user has any of the specified permissions
+ */
+export function hasAnyPermission(user: AuthenticatedUser, permissions: string[]): boolean {
+    return permissions.some(p => hasPermission(user, p));
+}
+
+/**
+ * Check if user has all of the specified permissions
+ */
+export function hasAllPermissions(user: AuthenticatedUser, permissions: string[]): boolean {
+    return permissions.every(p => hasPermission(user, p));
+}
+
+/**
+ * Require user to have a specific permission
+ * Throws 401 if not authenticated, 403 if missing permission
+ */
+export async function requirePermission(
+    request: Request,
+    permission: string,
+    getDatabase: () => RBACDatabaseAdapter
+): Promise<AuthenticatedUser> {
+    const user = await getAuthenticatedUser(request, getDatabase);
+
+    if (!user) {
         throw new Response("Unauthorized", { status: 401 });
     }
 
-    // Check database for user role
-    const db = getDatabase();
-    const dbUser = await db.findUserByEmail(session.email);
-
-    if (!dbUser) {
-        throw new Response("User not found", { status: 403 });
+    if (!hasPermission(user, permission)) {
+        throw new Response(`Forbidden - Missing permission: ${permission}`, { status: 403 });
     }
 
-    const isStaff = dbUser.role === "admin" || dbUser.role === "board_member";
-    if (!isStaff) {
-        throw new Response("Forbidden - Staff access required", { status: 403 });
+    return user;
+}
+
+/**
+ * Require user to have any of the specified permissions
+ */
+export async function requireAnyPermission(
+    request: Request,
+    permissions: string[],
+    getDatabase: () => RBACDatabaseAdapter
+): Promise<AuthenticatedUser> {
+    const user = await getAuthenticatedUser(request, getDatabase);
+
+    if (!user) {
+        throw new Response("Unauthorized", { status: 401 });
     }
 
-    return { ...session, role: dbUser.role };
+    if (!hasAnyPermission(user, permissions)) {
+        throw new Response(`Forbidden - Requires one of: ${permissions.join(", ")}`, { status: 403 });
+    }
+
+    return user;
 }
 
 // ============================================

@@ -1,8 +1,7 @@
 import type { Route } from "./+types/submissions";
 import { Form } from "react-router";
-import { requireStaff, isAdmin } from "~/lib/auth.server";
-import { getDatabase } from "~/db";
-import { getSubmissions, updateSubmissionStatus, deleteSubmission, type Submission } from "~/lib/google.server";
+import { requirePermission, hasPermission } from "~/lib/auth.server";
+import { getDatabase, type Submission, type SubmissionStatus } from "~/db";
 import { SITE_CONFIG } from "~/lib/config.server";
 import { SUBMISSION_STATUSES } from "~/lib/constants";
 import { PageWrapper } from "~/components/layout/page-layout";
@@ -16,34 +15,41 @@ export function meta({ data }: Route.MetaArgs) {
 }
 
 export async function loader({ request }: Route.LoaderArgs) {
-    const session = await requireStaff(request, getDatabase);
-    const submissions = await getSubmissions();
+    const user = await requirePermission(request, "submissions:read", getDatabase);
+    const db = getDatabase();
+    const submissions = await db.getSubmissions();
+
+    // Sort by createdAt descending (newest first)
+    const sortedSubmissions = submissions.sort((a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
 
     return {
         siteConfig: SITE_CONFIG,
-        session,
-        submissions: submissions.reverse(),
-        isAdmin: isAdmin(session.email),
+        session: user,
+        submissions: sortedSubmissions,
+        canDelete: hasPermission(user, "submissions:delete"),
     };
 }
 
 export async function action({ request }: Route.ActionArgs) {
-    const session = await requireStaff(request, getDatabase);
+    const user = await requirePermission(request, "submissions:write", getDatabase);
+    const db = getDatabase();
 
     const formData = await request.formData();
     const actionType = formData.get("_action") as string;
-    const rowIndex = Number(formData.get("rowIndex"));
+    const submissionId = formData.get("submissionId") as string;
 
-    if (actionType === "delete" && rowIndex) {
-        // Only admins can delete
-        if (!isAdmin(session.email)) {
-            throw new Response("Forbidden - Admin required", { status: 403 });
+    if (actionType === "delete" && submissionId) {
+        // Check for delete permission
+        if (!hasPermission(user, "submissions:delete")) {
+            throw new Response("Forbidden - Missing submissions:delete permission", { status: 403 });
         }
-        await deleteSubmission(rowIndex);
+        await db.deleteSubmission(submissionId);
     } else if (actionType === "status" || !actionType) {
-        const newStatus = formData.get("status") as string;
-        if (rowIndex && newStatus) {
-            await updateSubmissionStatus(rowIndex, newStatus);
+        const newStatus = formData.get("status") as SubmissionStatus;
+        if (submissionId && newStatus) {
+            await db.updateSubmissionStatus(submissionId, newStatus);
         }
     }
 
@@ -68,7 +74,7 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export default function Submissions({ loaderData }: Route.ComponentProps) {
-    const { session, submissions, isAdmin: userIsAdmin } = loaderData;
+    const { session, submissions, canDelete } = loaderData;
 
     return (
         <PageWrapper>
@@ -146,7 +152,7 @@ export default function Submissions({ loaderData }: Route.ComponentProps) {
                                     </tr>
                                 ) : (
                                     submissions.map((submission) => (
-                                        <SubmissionRow key={submission.rowIndex} submission={submission} canDelete={userIsAdmin} />
+                                        <SubmissionRow key={submission.id} submission={submission} canDelete={canDelete} />
                                     ))
                                 )}
                             </tbody>
@@ -159,7 +165,7 @@ export default function Submissions({ loaderData }: Route.ComponentProps) {
 }
 
 function SubmissionRow({ submission, canDelete }: { submission: Submission; canDelete?: boolean }) {
-    const formattedDate = new Date(submission.timestamp).toLocaleDateString("fi-FI", {
+    const formattedDate = new Date(submission.createdAt).toLocaleDateString("fi-FI", {
         day: "numeric",
         month: "short",
         hour: "2-digit",
@@ -182,6 +188,9 @@ function SubmissionRow({ submission, canDelete }: { submission: Submission; canD
             <td className="px-4 py-4">
                 <p className="font-medium text-gray-900 dark:text-white">{submission.name}</p>
                 <p className="text-sm text-gray-500">{submission.email}</p>
+                {submission.apartmentNumber && (
+                    <p className="text-xs text-gray-400">Asunto: {submission.apartmentNumber}</p>
+                )}
             </td>
             <td className="px-4 py-4 max-w-md">
                 <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2">
@@ -192,7 +201,7 @@ function SubmissionRow({ submission, canDelete }: { submission: Submission; canD
                 <div className="flex items-center gap-2">
                     <Form method="post" className="flex items-center">
                         <input type="hidden" name="_action" value="status" />
-                        <input type="hidden" name="rowIndex" value={submission.rowIndex} />
+                        <input type="hidden" name="submissionId" value={submission.id} />
                         <select
                             name="status"
                             defaultValue={submission.status}
@@ -216,7 +225,7 @@ function SubmissionRow({ submission, canDelete }: { submission: Submission; canD
                             }
                         }}>
                             <input type="hidden" name="_action" value="delete" />
-                            <input type="hidden" name="rowIndex" value={submission.rowIndex} />
+                            <input type="hidden" name="submissionId" value={submission.id} />
                             <button
                                 type="submit"
                                 className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"

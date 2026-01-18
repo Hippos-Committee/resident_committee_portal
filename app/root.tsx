@@ -10,43 +10,42 @@ import {
 
 import type { Route } from "./+types/root";
 import "./app.css";
-import { getSession, isAdmin } from "~/lib/auth.server";
+import { getAuthenticatedUser, getGuestPermissions } from "~/lib/auth.server";
 import { SITE_CONFIG } from "~/lib/config.server";
 import { getDatabase } from "~/db";
+import type { ClientUser } from "~/contexts/user-context";
 
 export async function loader({ request }: Route.LoaderArgs) {
-  const session = await getSession(request);
+  const authUser = await getAuthenticatedUser(request, getDatabase);
 
-  let userRole: "resident" | "board_member" | "admin" | undefined;
-  if (session?.email) {
-    try {
-      const db = getDatabase();
-      const dbUser = await db.findUserByEmail(session.email);
-      userRole = dbUser?.role;
-    } catch {
-      // Database might not be available, fall back to isAdmin check
-    }
+  let user: ClientUser | null;
+
+  if (authUser) {
+    // Logged in user - use their permissions
+    user = {
+      userId: authUser.userId,
+      email: authUser.email,
+      name: authUser.name,
+      role: authUser.role,
+      roleId: authUser.roleId,
+      permissions: authUser.permissions,
+    };
+  } else {
+    // Guest user - get Guest role permissions for navbar visibility
+    const guestPermissions = await getGuestPermissions(() => getDatabase());
+    user = {
+      userId: "guest",
+      email: "",
+      name: "Guest",
+      role: "guest",
+      roleId: null,
+      permissions: guestPermissions,
+    };
   }
 
-  const userIsAdmin = session ? isAdmin(session.email) : false;
-  const isStaff = userRole === "admin" || userRole === "board_member";
-
   return {
-    user: session ? {
-      email: session.email,
-      name: session.name,
-      isAdmin: userIsAdmin,
-      role: userRole,
-    } : null,
+    user,
     siteConfig: SITE_CONFIG,
-    // Pre-compute nav visibility on server
-    navVisibility: {
-      showLogin: !session,
-      showLogout: !!session,
-      showProfile: !!session,
-      showSubmissions: isStaff,
-      showUsers: userIsAdmin,
-    },
   };
 }
 
@@ -90,6 +89,9 @@ import { queryClient } from "./lib/query-client";
 import { Navigation } from "./components/navigation";
 import { InfoReelProvider } from "./contexts/info-reel-context";
 import { useInfoReel } from "./contexts/info-reel-context";
+import { UserProvider } from "./contexts/user-context";
+import { NewTransactionProvider } from "./contexts/new-transaction-context";
+import { Toaster } from "~/components/ui/sonner";
 
 function ContentFader({ children }: { children: React.ReactNode }) {
   const { isInfoReel, opacity } = useInfoReel();
@@ -105,37 +107,42 @@ function ContentFader({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
-  const { user, siteConfig, navVisibility } = useLoaderData<typeof loader>();
+  const { user, siteConfig } = useLoaderData<typeof loader>();
 
   return (
     <QueryClientProvider client={queryClient}>
-      <InfoReelProvider>
-        <div className="flex flex-col h-full bg-background text-foreground overflow-hidden">
-          <div className="z-50 bg-background/80 backdrop-blur-md transition-all duration-300 shrink-0">
-            <header className="flex items-center justify-center px-4 pb-2">
-              <div className="flex items-center justify-center gap-2 sm:gap-4 md:gap-8 mt-1 sm:mt-2 md:mt-4">
-                <span className="text-xl sm:text-3xl md:text-7xl font-black tracking-tighter uppercase text-gray-900 dark:text-white leading-none">
-                  {siteConfig.shortName || siteConfig.name}
-                </span>
-                <div className="flex flex-col items-start justify-center h-full text-gray-900 dark:text-white uppercase font-black tracking-widest leading-[0.85] border-l-2 md:border-l-4 border-primary pl-3 sm:pl-4 md:pl-10 py-1 md:py-2">
-                  <span className="text-sm sm:text-2xl md:text-3xl">Asukastoimikunta</span>
-                  <span className="text-[9px] sm:text-xl md:text-2xl opacity-90 mt-0.5 md:mt-2">Tenant Committee</span>
-                </div>
+      <UserProvider user={user}>
+        <NewTransactionProvider>
+          <InfoReelProvider>
+            <div className="flex flex-col h-full bg-background text-foreground overflow-hidden">
+              <div className="z-50 bg-background/80 backdrop-blur-md transition-all duration-300 shrink-0">
+                <header className="flex items-center justify-center px-4 pb-2">
+                  <div className="flex items-center justify-center gap-2 sm:gap-4 md:gap-8 mt-1 sm:mt-2 md:mt-4">
+                    <span className="text-xl sm:text-3xl md:text-7xl font-black tracking-tighter uppercase text-gray-900 dark:text-white leading-none">
+                      {siteConfig.shortName || siteConfig.name}
+                    </span>
+                    <div className="flex flex-col items-start justify-center h-full text-gray-900 dark:text-white uppercase font-black tracking-widest leading-[0.85] border-l-2 md:border-l-4 border-primary pl-3 sm:pl-4 md:pl-10 py-1 md:py-2">
+                      <span className="text-sm sm:text-2xl md:text-3xl">Asukastoimikunta</span>
+                      <span className="text-[9px] sm:text-xl md:text-2xl opacity-90 mt-0.5 md:mt-2">Tenant Committee</span>
+                    </div>
+                  </div>
+                </header>
+
+                <nav className="pb-1 sm:pb-2 md:pb-4">
+                  <Navigation orientation="horizontal" />
+                </nav>
+
               </div>
-            </header>
 
-            <nav className="pb-1 sm:pb-2 md:pb-4">
-              <Navigation orientation="horizontal" user={user} navVisibility={navVisibility} />
-            </nav>
-
-          </div>
-
-          {/* Main Content Area - fades during info reel transitions */}
-          <ContentFader>
-            <Outlet />
-          </ContentFader>
-        </div>
-      </InfoReelProvider>
+              {/* Main Content Area - fades during info reel transitions */}
+              <ContentFader>
+                <Outlet />
+              </ContentFader>
+            </div>
+          </InfoReelProvider>
+        </NewTransactionProvider>
+      </UserProvider>
+      <Toaster richColors position="top-center" />
     </QueryClientProvider>
   );
 }

@@ -155,6 +155,12 @@ export class PostgresAdapter implements DatabaseAdapter {
 		const user = await this.findUserById(userId);
 		if (!user) return [];
 
+		// Super admin (ADMIN_EMAIL) always gets all permissions
+		const adminEmail = process.env.ADMIN_EMAIL?.toLowerCase();
+		if (adminEmail && user.email.toLowerCase() === adminEmail) {
+			return ["*"];
+		}
+
 		// If user has new roleId, use that
 		if (user.roleId) {
 			const perms = await this.getRolePermissions(user.roleId);

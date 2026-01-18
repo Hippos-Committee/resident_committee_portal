@@ -77,17 +77,24 @@ bun run db:push
 
 ### Production (Neon + Vercel)
 
-1. In your Vercel project, go to **Storage** → **Create Database** → **Neon**
-2. Vercel automatically sets `DATABASE_URL` and the app detects production environment
+The easiest way to deploy is using the Vercel + Neon integration.
+
+1. **Create Database**: In your Vercel project dashboard, go to **Storage** → **Connect Database** → **Neon**.
+2. **Environment Variables**: Vercel automatically sets `DATABASE_URL`.
+3. **Run Migrations & Seed**: Follow the steps in the [Database Commands](#database-commands) and [Post-Deployment](#post-deployment) sections.
 
 ### Database Commands
 
 ```bash
-bun run db:push      # Push schema to database (dev)
-bun run db:generate  # Generate migrations
-bun run db:migrate   # Run migrations (prod)
-bun run db:studio    # Open Drizzle Studio GUI
+bun run db:push          # Push schema to database (best for first-time setup)
+bun run db:generate      # Generate a new migration file
+bun run db:migrate       # Run all pending migrations
+bun run db:studio        # Open Drizzle Studio GUI
+bun run scripts/seed-rbac.ts  # Seed permissions and default roles (REQUIRED)
 ```
+
+> [!IMPORTANT]
+> Always run `bun run scripts/seed-rbac.ts` after your first migration to populate the permissions system.
 
 ### Adding Other Database Providers
 
@@ -159,6 +166,33 @@ This project integrates with Google Calendar, Drive, and Sheets to display dynam
     - Calendar: Make public (for event display)
     - Public folder: Share with "Anyone with the link" (Viewer)
     - Submissions sheet: Share with service account email (Editor)
+
+---
+
+## Post-Deployment (Vercel & OAuth)
+
+After deploying to Vercel, you must perform these steps for the portal to work correctly:
+
+### 1. Environment Variables
+In **Vercel Project Settings** → **Environment Variables**, add the following:
+
+- `APP_URL`: Set this to your custom domain (e.g., `https://your-portal.vercel.app`). This is required for Google OAuth redirects to work correctly.
+
+### 2. Google OAuth Configuration
+In the [Google Cloud Console](https://console.cloud.google.com/) → **APIs & Services** → **Credentials**:
+- Edit your OAuth 2.0 Client ID.
+- Add your production URL to **Authorized redirect URIs**: `https://your-portal.vercel.app/auth/callback`.
+
+### 3. Initialize Production Database
+Run these commands locally using your production `DATABASE_URL` (find it in Vercel Storage settings or `.env`):
+
+```bash
+# 1. Push the schema
+DATABASE_URL="your_production_url" bun run db:push
+
+# 2. Seed permissions and roles (CRITICAL)
+DATABASE_URL="your_production_url" bun run scripts/seed-rbac.ts
+```
  
 ---
  

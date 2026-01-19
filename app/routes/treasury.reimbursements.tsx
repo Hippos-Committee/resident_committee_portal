@@ -162,7 +162,7 @@ export default function BudgetReimbursements({ loaderData }: Route.ComponentProp
                 <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
                     <div>
                         <Link
-                            to="/budget"
+                            to="/treasury"
                             className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-primary mb-2"
                         >
                             <span className="material-symbols-outlined text-base">arrow_back</span>
@@ -173,7 +173,7 @@ export default function BudgetReimbursements({ loaderData }: Route.ComponentProp
                         </h1>
                         <p className="text-lg text-gray-500">Reimbursements</p>
                     </div>
-                    <Link to="/budget/reimbursement/new">
+                    <Link to="/treasury/reimbursement/new">
                         <Button>
                             <span className="material-symbols-outlined mr-2">add</span>
                             Uusi / New

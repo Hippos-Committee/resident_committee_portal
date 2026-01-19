@@ -169,22 +169,6 @@ export type Purchase = typeof purchases.$inferSelect;
 export type NewPurchase = typeof purchases.$inferInsert;
 
 /**
- * Budgets table schema
- * Stores yearly budget allocations
- */
-export const budgets = pgTable("budgets", {
-	id: uuid("id").primaryKey().defaultRandom(),
-	year: integer("year").notNull().unique(),
-	allocation: decimal("allocation", { precision: 10, scale: 2 }).notNull(),
-	notes: text("notes"),
-	createdAt: timestamp("created_at").defaultNow().notNull(),
-	updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
-
-export type Budget = typeof budgets.$inferSelect;
-export type NewBudget = typeof budgets.$inferInsert;
-
-/**
  * Transaction types
  */
 export type TransactionType = "income" | "expense";

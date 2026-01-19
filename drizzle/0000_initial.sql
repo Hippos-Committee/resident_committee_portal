@@ -54,16 +54,6 @@ CREATE TABLE "users" (
 -- TREASURY
 -- ============================================
 
-CREATE TABLE "budgets" (
-	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"year" integer NOT NULL,
-	"allocation" numeric(10, 2) NOT NULL,
-	"notes" text,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
-	CONSTRAINT "budgets_year_unique" UNIQUE("year")
-);
-
 CREATE TABLE "transactions" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"year" integer NOT NULL,

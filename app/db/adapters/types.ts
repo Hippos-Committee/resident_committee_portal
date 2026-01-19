@@ -1,4 +1,4 @@
-import type { User, NewUser, InventoryItem, NewInventoryItem, Purchase, NewPurchase, Budget, NewBudget, Transaction, NewTransaction, Submission, NewSubmission, SubmissionStatus, SocialLink, NewSocialLink, InventoryItemTransaction, NewInventoryItemTransaction, Permission, NewPermission, Role, NewRole, RolePermission, NewRolePermission, AppSetting, RemovalReason } from "../schema";
+import type { User, NewUser, InventoryItem, NewInventoryItem, Purchase, NewPurchase, Transaction, NewTransaction, Submission, NewSubmission, SubmissionStatus, SocialLink, NewSocialLink, InventoryItemTransaction, NewInventoryItemTransaction, Permission, NewPermission, Role, NewRole, RolePermission, NewRolePermission, AppSetting, RemovalReason } from "../schema";
 
 /**
  * Database adapter interface
@@ -69,12 +69,6 @@ export interface DatabaseAdapter {
 	createPurchase(purchase: NewPurchase): Promise<Purchase>;
 	updatePurchase(id: string, data: Partial<Omit<NewPurchase, "id">>): Promise<Purchase | null>;
 	deletePurchase(id: string): Promise<boolean>;
-
-	// ==================== Budget Methods ====================
-	getBudgetByYear(year: number): Promise<Budget | null>;
-	getAllBudgets(): Promise<Budget[]>;
-	createBudget(budget: NewBudget): Promise<Budget>;
-	updateBudget(id: string, data: Partial<Omit<NewBudget, "id">>): Promise<Budget | null>;
 
 	// ==================== Transaction Methods ====================
 	getTransactionsByYear(year: number): Promise<Transaction[]>;

@@ -1,7 +1,7 @@
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { eq, and, notInArray, inArray } from "drizzle-orm";
-import { users, inventoryItems, purchases, budgets, transactions, submissions, socialLinks, inventoryItemTransactions, permissions, roles, rolePermissions, appSettings, type User, type NewUser, type InventoryItem, type NewInventoryItem, type Purchase, type NewPurchase, type Budget, type NewBudget, type Transaction, type NewTransaction, type Submission, type NewSubmission, type SubmissionStatus, type SocialLink, type NewSocialLink, type InventoryItemTransaction, type Permission, type NewPermission, type Role, type NewRole, type RolePermission, type NewRolePermission, type AppSetting } from "../schema";
+import { users, inventoryItems, purchases, transactions, submissions, socialLinks, inventoryItemTransactions, permissions, roles, rolePermissions, appSettings, type User, type NewUser, type InventoryItem, type NewInventoryItem, type Purchase, type NewPurchase, type Transaction, type NewTransaction, type Submission, type NewSubmission, type SubmissionStatus, type SocialLink, type NewSocialLink, type InventoryItemTransaction, type Permission, type NewPermission, type Role, type NewRole, type RolePermission, type NewRolePermission, type AppSetting } from "../schema";
 import type { DatabaseAdapter } from "./types";
 
 /**
@@ -402,26 +402,6 @@ export class PostgresAdapter implements DatabaseAdapter {
 
 		const result = await this.db.delete(purchases).where(eq(purchases.id, id)).returning();
 		return result.length > 0;
-	}
-
-	// ==================== Budget Methods ====================
-	async getBudgetByYear(year: number): Promise<Budget | null> {
-		const result = await this.db.select().from(budgets).where(eq(budgets.year, year)).limit(1);
-		return result[0] ?? null;
-	}
-
-	async getAllBudgets(): Promise<Budget[]> {
-		return this.db.select().from(budgets);
-	}
-
-	async createBudget(budget: NewBudget): Promise<Budget> {
-		const result = await this.db.insert(budgets).values(budget).returning();
-		return result[0];
-	}
-
-	async updateBudget(id: string, data: Partial<Omit<NewBudget, "id">>): Promise<Budget | null> {
-		const result = await this.db.update(budgets).set({ ...data, updatedAt: new Date() }).where(eq(budgets.id, id)).returning();
-		return result[0] ?? null;
 	}
 
 	// ==================== Transaction Methods ====================

@@ -10,7 +10,7 @@ The objective of this project is to provide a generic, easily deployable templat
 
 - **Resident Involvement**: Integrated forms for committee applications, event suggestions, and purchase requests.
 - **Event Management**: Up-to-date view of upcoming community events (integrated with Google Calendar).
-- **Transparency**: Easy access to meeting minutes, budgets, and public documents directly from Google Drive.
+- **Transparency**: Easy access to meeting minutes, treasury records, and public documents.
 - **Social Integration**: Dynamic social media links managed via Google Sheets.
 - **Info Reel Mode**: Automated "kiosk" mode that cycles through all pages—perfect for public displays.
 - **Admin Dashboard**: A dedicated management interface for committee members to track and process submissions.
@@ -89,6 +89,16 @@ bun run db:migrate   # Run migrations (prod)
 bun run db:studio    # Open Drizzle Studio GUI
 ```
 
+### Initial Setup (RBAC Seeding)
+
+After pushing the schema, seed the role-based access control system:
+
+```bash
+bun run scripts/seed-rbac.ts
+```
+
+This creates the default roles (Admin, Board Member, Resident) and permissions.
+
 ### Adding Other Database Providers
 
 The database layer uses an adapter pattern (`app/db/adapters/`). To add a new provider:
@@ -122,12 +132,9 @@ This project integrates with Google Calendar, Drive, and Sheets to display dynam
     - **Calendar ID**: Open Google Calendar settings -> Integrate calendar -> Calendar ID.
     
     - **Public Root Folder ID** (`GOOGLE_DRIVE_PUBLIC_ROOT_ID`): 
-        - Create a root folder (e.g., "Committe Public Folder") in Google Drive.
-        - At the root level, create a Google Sheet named `some` (for social media links).
+        - Create a root folder (e.g., "Committee Public Folder") in Google Drive.
         - Inside it, create folders for each year (e.g., "2026").
-        - Inside a year folder (e.g. "2026"), create:
-             - A Google Sheet named `budget` (import the template).
-             - A folder named `minutes`.
+        - Inside a year folder (e.g. "2026"), create a folder named `minutes`.
         - **Share this folder with "Anyone with the link" (Viewer)**.
         - Get the ID from the URL and paste into `GOOGLE_DRIVE_PUBLIC_ROOT_ID`.
 
@@ -187,7 +194,7 @@ You can adjust how frequently the client refetches data by modifying `STALE_TIME
 ### Info Reel (Kiosk Mode)
 
 The application includes an "Info Reel" mode designed for public displays or kiosks. In this mode:
-- The application automatically cycles through all main pages (`/`, `/events`, `/budget`, `/minutes`, `/social`) every 30 seconds.
+- The application automatically cycles through all main pages (`/`, `/events`, `/treasury`, `/minutes`, `/inventory`, `/social`) every 30 seconds.
 - A visual progress bar at the bottom indicates the time remaining before the next transition.
 - Decorative elements like "Open Link" buttons and the "Login" navigation item are hidden for a cleaner look.
 

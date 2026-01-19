@@ -4,16 +4,9 @@
 
 -- ============================================
 -- RBAC (Role-Based Access Control) System
+-- Permissions are defined in app/lib/permissions.ts
+-- Roles store permission names as a text array
 -- ============================================
-
-CREATE TABLE "permissions" (
-	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"name" text NOT NULL,
-	"description" text,
-	"category" text NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	CONSTRAINT "permissions_name_unique" UNIQUE("name")
-);
 
 CREATE TABLE "roles" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
@@ -22,16 +15,10 @@ CREATE TABLE "roles" (
 	"color" text DEFAULT 'bg-gray-500' NOT NULL,
 	"is_system" boolean DEFAULT false NOT NULL,
 	"sort_order" integer DEFAULT 0 NOT NULL,
+	"permissions" text[] DEFAULT '{}' NOT NULL,
 	"created_at" timestamp DEFAULT now() NOT NULL,
 	"updated_at" timestamp DEFAULT now() NOT NULL,
 	CONSTRAINT "roles_name_unique" UNIQUE("name")
-);
-
-CREATE TABLE "role_permissions" (
-	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"role_id" uuid NOT NULL,
-	"permission_id" uuid NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL
 );
 
 -- ============================================
@@ -42,8 +29,7 @@ CREATE TABLE "users" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"email" text NOT NULL,
 	"name" text NOT NULL,
-	"role" text DEFAULT 'resident' NOT NULL,
-	"role_id" uuid,
+	"role_id" uuid NOT NULL,
 	"apartment_number" text,
 	"created_at" timestamp DEFAULT now() NOT NULL,
 	"updated_at" timestamp DEFAULT now() NOT NULL,
@@ -172,8 +158,6 @@ CREATE TABLE "app_settings" (
 -- FOREIGN KEY CONSTRAINTS
 -- ============================================
 
-ALTER TABLE "role_permissions" ADD CONSTRAINT "role_permissions_role_id_roles_id_fk" FOREIGN KEY ("role_id") REFERENCES "public"."roles"("id") ON DELETE cascade ON UPDATE no action;
-ALTER TABLE "role_permissions" ADD CONSTRAINT "role_permissions_permission_id_permissions_id_fk" FOREIGN KEY ("permission_id") REFERENCES "public"."permissions"("id") ON DELETE cascade ON UPDATE no action;
 ALTER TABLE "users" ADD CONSTRAINT "users_role_id_roles_id_fk" FOREIGN KEY ("role_id") REFERENCES "public"."roles"("id") ON DELETE no action ON UPDATE no action;
 ALTER TABLE "transactions" ADD CONSTRAINT "transactions_purchase_id_purchases_id_fk" FOREIGN KEY ("purchase_id") REFERENCES "public"."purchases"("id") ON DELETE no action ON UPDATE no action;
 ALTER TABLE "purchases" ADD CONSTRAINT "purchases_inventory_item_id_inventory_items_id_fk" FOREIGN KEY ("inventory_item_id") REFERENCES "public"."inventory_items"("id") ON DELETE no action ON UPDATE no action;
@@ -184,6 +168,4 @@ ALTER TABLE "inventory_item_transactions" ADD CONSTRAINT "inventory_item_transac
 -- INDEXES
 -- ============================================
 
-CREATE INDEX "idx_role_permissions_role_id" ON "role_permissions"("role_id");
-CREATE INDEX "idx_role_permissions_permission_id" ON "role_permissions"("permission_id");
 CREATE INDEX "idx_users_role_id" ON "users"("role_id");

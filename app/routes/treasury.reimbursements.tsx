@@ -126,7 +126,7 @@ export default function BudgetReimbursements({ loaderData }: Route.ComponentProp
     const { purchases, years, currentYear, currentStatus, totals } = loaderData;
     const [searchParams, setSearchParams] = useSearchParams();
     const rootData = useRouteLoaderData<typeof rootLoader>("root");
-    const isStaff = rootData?.user?.role === "admin" || rootData?.user?.role === "board_member";
+    const isStaff = rootData?.user?.roleName === "Admin" || rootData?.user?.roleName === "Board Member";
 
     const formatCurrency = (value: number | string) => {
         const num = typeof value === "string" ? parseFloat(value) : value;

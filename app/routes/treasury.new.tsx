@@ -32,23 +32,24 @@ import {
 import { TransactionItemList, type TransactionItem } from "~/components/treasury/transaction-item-list";
 import { ReimbursementForm } from "~/components/treasury/reimbursement-form";
 import { useNewTransaction } from "~/contexts/new-transaction-context";
+import { useLanguage } from "~/contexts/language-context";
 
 // Category options for transactions
 
 const EXPENSE_CATEGORIES = [
-    { value: "inventory", label: "Tavarat / Inventory" },
-    { value: "snacks", label: "Eväät / Snacks" },
-    { value: "supplies", label: "Tarvikkeet / Supplies" },
-    { value: "event", label: "Tapahtuma / Event" },
-    { value: "other", label: "Muu / Other" },
+    { value: "inventory", labelFi: "Tavarat", labelEn: "Inventory" },
+    { value: "snacks", labelFi: "Eväät", labelEn: "Snacks" },
+    { value: "supplies", labelFi: "Tarvikkeet", labelEn: "Supplies" },
+    { value: "event", labelFi: "Tapahtuma", labelEn: "Event" },
+    { value: "other", labelFi: "Muu", labelEn: "Other" },
 ] as const;
 
 const INCOME_CATEGORIES = [
-    { value: "grant", label: "Avustus / Grant" },
-    { value: "sales", label: "Myynti / Sales" },
-    { value: "event_income", label: "Tapahtumatulo / Event Income" },
-    { value: "membership", label: "Jäsenmaksut / Membership Fees" },
-    { value: "other", label: "Muu / Other" },
+    { value: "grant", labelFi: "Avustus", labelEn: "Grant" },
+    { value: "sales", labelFi: "Myynti", labelEn: "Sales" },
+    { value: "event_income", labelFi: "Tapahtumatulo", labelEn: "Event Income" },
+    { value: "membership", labelFi: "Jäsenmaksut", labelEn: "Membership Fees" },
+    { value: "other", labelFi: "Muu", labelEn: "Other" },
 ] as const;
 
 export function meta({ data }: Route.MetaArgs) {
@@ -394,6 +395,7 @@ export default function NewTransaction({ loaderData }: Route.ComponentProps) {
 
     // Get items from context (set by inventory page)
     const { items: contextItems, setItems, addItem, updateItemQuantity, removeItem, clearItems } = useNewTransaction();
+    const { language } = useLanguage();
 
     const [requestReimbursement, setRequestReimbursement] = useState(false);
     const [transactionType, setTransactionType] = useState<"income" | "expense">(prefill.type);
@@ -513,9 +515,8 @@ export default function NewTransaction({ loaderData }: Route.ComponentProps) {
             <div className="w-full max-w-2xl mx-auto px-4">
                 <div className="mb-8">
                     <h1 className="text-3xl md:text-4xl font-black text-gray-900 dark:text-white">
-                        Uusi tapahtuma
+                        {language === "fi" ? "Uusi tapahtuma" : "New Transaction"}
                     </h1>
-                    <p className="text-lg text-gray-500">New Transaction</p>
                 </div>
 
 
@@ -527,12 +528,12 @@ export default function NewTransaction({ loaderData }: Route.ComponentProps) {
                     {/* Transaction Details */}
                     <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-200 dark:border-gray-700 space-y-4">
                         <h2 className="text-lg font-bold text-gray-900 dark:text-white">
-                            Tapahtuman tiedot / Transaction Details
+                            {language === "fi" ? "Tapahtuman tiedot" : "Transaction Details"}
                         </h2>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="space-y-2">
-                                <Label htmlFor="type">Tyyppi / Type *</Label>
+                                <Label htmlFor="type">{language === "fi" ? "Tyyppi" : "Type"} *</Label>
                                 <Select
                                     name="type"
                                     defaultValue={prefill.type}
@@ -541,26 +542,26 @@ export default function NewTransaction({ loaderData }: Route.ComponentProps) {
                                     required
                                 >
                                     <SelectTrigger>
-                                        <SelectValue placeholder="Valitse tyyppi..." />
+                                        <SelectValue placeholder={language === "fi" ? "Valitse tyyppi..." : "Select type..."} />
                                     </SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="income">
                                             <span className="flex items-center gap-2">
                                                 <span className="text-green-600">+</span>
-                                                Tulo / Income
+                                                {language === "fi" ? "Tulo" : "Income"}
                                             </span>
                                         </SelectItem>
                                         <SelectItem value="expense">
                                             <span className="flex items-center gap-2">
                                                 <span className="text-red-600">-</span>
-                                                Meno / Expense
+                                                {language === "fi" ? "Meno" : "Expense"}
                                             </span>
                                         </SelectItem>
                                     </SelectContent>
                                 </Select>
                             </div>
                             <div className="space-y-2">
-                                <Label htmlFor="amount">Summa € / Amount € *</Label>
+                                <Label htmlFor="amount">{language === "fi" ? "Summa €" : "Amount €"} *</Label>
                                 <Input
                                     id="amount"
                                     name="amount"
@@ -576,12 +577,12 @@ export default function NewTransaction({ loaderData }: Route.ComponentProps) {
                         </div>
 
                         <div className="space-y-2">
-                            <Label htmlFor="description">Kuvaus / Description *</Label>
+                            <Label htmlFor="description">{language === "fi" ? "Kuvaus" : "Description"} *</Label>
                             <Input
                                 id="description"
                                 name="description"
                                 required
-                                placeholder="Esim. Kahvitarjoilut, Kokoukseen hankitut eväät"
+                                placeholder={language === "fi" ? "Esim. Kahvitarjoilut, Kokoukseen hankitut eväät" : "E.g. Coffee service, Meeting snacks"}
                                 value={descriptionValue}
                                 onChange={(e) => setDescriptionValue(e.target.value)}
                             />
@@ -589,7 +590,7 @@ export default function NewTransaction({ loaderData }: Route.ComponentProps) {
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="space-y-2">
-                                <Label htmlFor="category">Kategoria / Category *</Label>
+                                <Label htmlFor="category">{language === "fi" ? "Kategoria" : "Category"} *</Label>
                                 <Select
                                     name="category"
                                     value={selectedCategory}
@@ -597,19 +598,19 @@ export default function NewTransaction({ loaderData }: Route.ComponentProps) {
                                     required
                                 >
                                     <SelectTrigger>
-                                        <SelectValue placeholder="Valitse kategoria..." />
+                                        <SelectValue placeholder={language === "fi" ? "Valitse kategoria..." : "Select category..."} />
                                     </SelectTrigger>
                                     <SelectContent>
                                         {categoryOptions.map(opt => (
                                             <SelectItem key={opt.value} value={opt.value}>
-                                                {opt.label}
+                                                {language === "fi" ? opt.labelFi : opt.labelEn}
                                             </SelectItem>
                                         ))}
                                     </SelectContent>
                                 </Select>
                             </div>
                             <div className="space-y-2">
-                                <Label htmlFor="date">Päivämäärä / Date *</Label>
+                                <Label htmlFor="date">{language === "fi" ? "Päivämäärä" : "Date"} *</Label>
                                 <Input
                                     id="date"
                                     name="date"
@@ -621,10 +622,10 @@ export default function NewTransaction({ loaderData }: Route.ComponentProps) {
                         </div>
 
                         <div className="space-y-2">
-                            <Label htmlFor="year">Vuosi / Year *</Label>
+                            <Label htmlFor="year">{language === "fi" ? "Vuosi" : "Year"} *</Label>
                             <Select name="year" defaultValue={currentYear.toString()} required>
                                 <SelectTrigger>
-                                    <SelectValue placeholder="Valitse vuosi..." />
+                                    <SelectValue placeholder={language === "fi" ? "Valitse vuosi..." : "Select year..."} />
                                 </SelectTrigger>
                                 <SelectContent>
                                     {yearOptions.map((year) => (
@@ -677,14 +678,14 @@ export default function NewTransaction({ loaderData }: Route.ComponentProps) {
                                     onCheckedChange={(checked) => setRequestReimbursement(checked === true)}
                                 />
                                 <Label htmlFor="requestReimbursement" className="text-lg font-bold cursor-pointer">
-                                    Hae kulukorvausta / Request Reimbursement
+                                    {language === "fi" ? "Hae kulukorvausta" : "Request Reimbursement"}
                                 </Label>
                             </div>
 
                             <p className="text-sm text-gray-500 dark:text-gray-400">
-                                Valitse jos haluat hakea kulukorvausta tästä menosta määrärahasta.
-                                <br />
-                                Check if you want to request reimbursement from the allowance.
+                                {language === "fi"
+                                    ? "Valitse jos haluat hakea kulukorvausta tästä menosta määrärahasta."
+                                    : "Check if you want to request reimbursement from the allowance."}
                             </p>
 
                             {requestReimbursement && (
@@ -711,7 +712,7 @@ export default function NewTransaction({ loaderData }: Route.ComponentProps) {
                             onClick={() => navigate(-1)}
                             className="flex-1"
                         >
-                            Peruuta / Cancel
+                            {language === "fi" ? "Peruuta" : "Cancel"}
                         </Button>
                         <Button
                             type="submit"
@@ -721,11 +722,11 @@ export default function NewTransaction({ loaderData }: Route.ComponentProps) {
                             {isSubmitting ? (
                                 <span className="flex items-center gap-2">
                                     <span className="animate-spin material-symbols-outlined text-sm">progress_activity</span>
-                                    <span>Tallennetaan... / Saving...</span>
+                                    <span>{language === "fi" ? "Tallennetaan..." : "Saving..."}</span>
                                 </span>
                             ) : requestReimbursement
-                                ? "Lisää ja hae korvausta / Add & Request Reimbursement"
-                                : "Lisää / Add"
+                                ? (language === "fi" ? "Lisää ja hae korvausta" : "Add & Request Reimbursement")
+                                : (language === "fi" ? "Lisää" : "Add")
                             }
                         </Button>
                     </div>

@@ -7,6 +7,7 @@ import { useState, useEffect } from "react";
 import { SITE_CONFIG } from "~/lib/config.server";
 import { getSession } from "~/lib/auth.server";
 import { getDatabase, type SubmissionType } from "~/db";
+import { useLanguage } from "~/contexts/language-context";
 
 export function meta({ data }: Route.MetaArgs) {
     return [
@@ -42,31 +43,35 @@ export async function loader({ request }: Route.LoaderArgs) {
 const FORM_TYPES = [
     {
         id: "committee",
-        title: "Hae toimikuntaan",
-        subtitle: "Apply for Committee",
+        titleFi: "Hae toimikuntaan",
+        titleEn: "Apply for Committee",
         icon: "diversity_3",
-        placeholder: "Kerro itsestäsi ja miksi haluaisit liittyä toimikuntaan...\n\nTell us about yourself and why you'd like to join the committee...",
+        placeholderFi: "Kerro itsestäsi ja miksi haluaisit liittyä toimikuntaan...",
+        placeholderEn: "Tell us about yourself and why you'd like to join the committee...",
     },
     {
         id: "events",
-        title: "Ehdota tapahtumaa",
-        subtitle: "Suggest an Event",
+        titleFi: "Ehdota tapahtumaa",
+        titleEn: "Suggest an Event",
         icon: "celebration",
-        placeholder: "Kuvaile tapahtumaidea: mitä, milloin, missä...\n\nDescribe your event idea: what, when, where...",
+        placeholderFi: "Kuvaile tapahtumaidea: mitä, milloin, missä...",
+        placeholderEn: "Describe your event idea: what, when, where...",
     },
     {
         id: "purchases",
-        title: "Pyydä hankintaa",
-        subtitle: "Request a Purchase",
+        titleFi: "Pyydä hankintaa",
+        titleEn: "Request a Purchase",
         icon: "shopping_cart",
-        placeholder: "Mitä haluaisit hankkia ja miksi se hyödyttäisi asukkaita?\n\nWhat would you like to purchase and how would it benefit residents?",
+        placeholderFi: "Mitä haluaisit hankkia ja miksi se hyödyttäisi asukkaita?",
+        placeholderEn: "What would you like to purchase and how would it benefit residents?",
     },
     {
         id: "questions",
-        title: "Esitä kysymys",
-        subtitle: "Ask a Question",
+        titleFi: "Esitä kysymys",
+        titleEn: "Ask a Question",
         icon: "question_mark",
-        placeholder: "Kirjoita kysymyksesi tähän...\n\nWrite your question here...",
+        placeholderFi: "Kirjoita kysymyksesi tähän...",
+        placeholderEn: "Write your question here...",
     },
 ];
 
@@ -120,6 +125,7 @@ export default function Contact({ loaderData, actionData }: Route.ComponentProps
     const [searchParams] = useSearchParams();
     const preselectedType = searchParams.get("type");
     const { userDetails } = loaderData;
+    const { language } = useLanguage();
 
     const [selectedType, setSelectedType] = useState<string | null>(preselectedType);
 
@@ -141,19 +147,19 @@ export default function Contact({ loaderData, actionData }: Route.ComponentProps
                     </div>
                     <div>
                         <h2 className="text-2xl font-black text-gray-900 dark:text-white mb-2">
-                            Viesti lähetetty! <br /> <span className="text-lg font-bold text-gray-500">Message Sent!</span>
+                            {language === "fi" ? "Viesti lähetetty!" : "Message Sent!"}
                         </h2>
                         <p className="text-gray-500 dark:text-gray-400 font-medium">
-                            Kiitos yhteydenotostasi! Vastaamme sinulle mahdollisimman pian.
-                            <br />
-                            <span className="text-sm opacity-80">Thank you for contacting us! We will respond as soon as possible.</span>
+                            {language === "fi"
+                                ? "Kiitos yhteydenotostasi! Vastaamme sinulle mahdollisimman pian."
+                                : "Thank you for contacting us! We will respond as soon as possible."}
                         </p>
                     </div>
                     <Button
                         className="w-full rounded-full font-bold h-12"
                         onClick={() => window.location.href = "/"}
                     >
-                        Takaisin etusivulle / Back to Home
+                        {language === "fi" ? "Takaisin etusivulle" : "Back to Home"}
                     </Button>
                 </div>
             </div>
@@ -166,17 +172,14 @@ export default function Contact({ loaderData, actionData }: Route.ComponentProps
                 {/* Header */}
                 <div className="text-center mb-8">
                     <h1 className="text-4xl md:text-5xl font-black text-gray-900 dark:text-white tracking-tight">
-                        Ota yhteyttä
+                        {language === "fi" ? "Ota yhteyttä" : "Contact Us"}
                     </h1>
-                    <p className="text-xl md:text-2xl text-gray-400 font-bold mt-1">
-                        Contact Us
-                    </p>
                 </div>
 
                 {/* Type Selection */}
                 <div className="mb-8">
                     <label className="block text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-3 ml-1">
-                        Valitse aihe / Select Topic
+                        {language === "fi" ? "Valitse aihe" : "Select Topic"}
                     </label>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                         {FORM_TYPES.map((type) => (
@@ -195,10 +198,7 @@ export default function Contact({ loaderData, actionData }: Route.ComponentProps
                                     {type.icon}
                                 </span>
                                 <span className="text-sm font-bold text-center leading-tight">
-                                    {type.title}
-                                </span>
-                                <span className="text-[10px] font-medium opacity-70 text-center">
-                                    {type.subtitle}
+                                    {language === "fi" ? type.titleFi : type.titleEn}
                                 </span>
                             </button>
                         ))}
@@ -213,7 +213,7 @@ export default function Contact({ loaderData, actionData }: Route.ComponentProps
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <div className="space-y-1.5">
                                 <label htmlFor="name" className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 ml-1">
-                                    Nimi / Name
+                                    {language === "fi" ? "Nimi" : "Name"}
                                 </label>
                                 <input
                                     type="text"
@@ -227,7 +227,7 @@ export default function Contact({ loaderData, actionData }: Route.ComponentProps
 
                             <div className="space-y-1.5">
                                 <label htmlFor="email" className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 ml-1">
-                                    Sähköposti / Email
+                                    {language === "fi" ? "Sähköposti" : "Email"}
                                 </label>
                                 <input
                                     type="email"
@@ -241,14 +241,14 @@ export default function Contact({ loaderData, actionData }: Route.ComponentProps
 
                             <div className="space-y-1.5">
                                 <label htmlFor="apartmentNumber" className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 ml-1">
-                                    Asunto / Apartment
+                                    {language === "fi" ? "Asunto" : "Apartment"}
                                 </label>
                                 <input
                                     type="text"
                                     name="apartmentNumber"
                                     id="apartmentNumber"
                                     required
-                                    placeholder="esim. A 123"
+                                    placeholder={language === "fi" ? "esim. A 123" : "e.g. A 123"}
                                     defaultValue={userDetails?.apartmentNumber || ""}
                                     className="w-full h-12 px-4 rounded-xl bg-gray-50 dark:bg-gray-800 border-2 border-transparent focus:border-primary focus:bg-white dark:focus:bg-gray-900 outline-none transition-all font-medium placeholder:text-gray-400 placeholder:opacity-60"
                                 />
@@ -265,21 +265,23 @@ export default function Contact({ loaderData, actionData }: Route.ComponentProps
                                     className="w-5 h-5 rounded border-2 border-gray-300 dark:border-gray-600 text-primary focus:ring-primary focus:ring-offset-0 cursor-pointer"
                                 />
                                 <span className="text-sm text-gray-600 dark:text-gray-400 group-hover:text-gray-900 dark:group-hover:text-gray-200 transition-colors">
-                                    Päivitä asuntonumero profiiliini / Update apartment number in my profile
+                                    {language === "fi"
+                                        ? "Päivitä asuntonumero profiiliini"
+                                        : "Update apartment number in my profile"}
                                 </span>
                             </label>
                         )}
 
                         <div className="space-y-1.5">
                             <label htmlFor="message" className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 ml-1">
-                                Viesti / Message
+                                {language === "fi" ? "Viesti" : "Message"}
                             </label>
                             <textarea
                                 name="message"
                                 id="message"
                                 rows={6}
                                 required
-                                placeholder={selectedFormType?.placeholder}
+                                placeholder={language === "fi" ? selectedFormType?.placeholderFi : selectedFormType?.placeholderEn}
                                 className="w-full p-4 rounded-xl bg-gray-50 dark:bg-gray-800 border-2 border-transparent focus:border-primary focus:bg-white dark:focus:bg-gray-900 outline-none transition-all font-medium resize-none placeholder:text-gray-400 placeholder:opacity-60"
                             />
                         </div>
@@ -288,7 +290,7 @@ export default function Contact({ loaderData, actionData }: Route.ComponentProps
                             type="submit"
                             className="w-full h-14 rounded-xl text-lg font-black uppercase tracking-wide hover:scale-[1.02] transition-transform"
                         >
-                            Lähetä / Send
+                            {language === "fi" ? "Lähetä" : "Send"}
                         </Button>
                     </Form>
                 )}
@@ -297,7 +299,9 @@ export default function Contact({ loaderData, actionData }: Route.ComponentProps
                 {!selectedType && (
                     <div className="text-center py-12 text-gray-400">
                         <span className="material-symbols-outlined text-5xl mb-4 block opacity-50">arrow_upward</span>
-                        <p className="font-medium">Valitse aihe aloittaaksesi / Select a topic to begin</p>
+                        <p className="font-medium">
+                            {language === "fi" ? "Valitse aihe aloittaaksesi" : "Select a topic to begin"}
+                        </p>
                     </div>
                 )}
             </div>

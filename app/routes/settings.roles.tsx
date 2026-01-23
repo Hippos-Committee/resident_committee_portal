@@ -8,6 +8,7 @@ import { SITE_CONFIG } from "~/lib/config.server";
 import { Button } from "~/components/ui/button";
 import { useState, useEffect } from "react";
 import { PERMISSIONS, getPermissionsByCategory, type PermissionName } from "~/lib/permissions";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import {
 	AlertDialog,
@@ -138,6 +139,7 @@ const ROLE_COLORS = [
 
 export default function AdminRoles({ loaderData }: Route.ComponentProps) {
 	const { roles, permissionsByCategory } = loaderData;
+	const { t } = useTranslation();
 	const navigation = useNavigation();
 	const isSubmitting = navigation.state === "submitting";
 
@@ -173,23 +175,22 @@ export default function AdminRoles({ loaderData }: Route.ComponentProps) {
 				<div className="flex items-center justify-between mb-8">
 					<div>
 						<h1 className="text-3xl md:text-4xl font-black text-gray-900 dark:text-white">
-							Roolihallinta
+							{t("settings.roles.title")}
 						</h1>
-						<p className="text-lg text-gray-500">Role Management</p>
 					</div>
 				</div>
 
 				{/* New Role Form */}
 				{showNewRoleForm && (
 					<div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 mb-8">
-						<h2 className="text-xl font-bold mb-4">Luo uusi rooli / Create New Role</h2>
+						<h2 className="text-xl font-bold mb-4">{t("settings.roles.create_new_title")}</h2>
 						<Form method="post" className="space-y-4">
 							<input type="hidden" name="_action" value="create" />
 
 							<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 								<div>
 									<label className="block text-sm font-medium mb-1">
-										Nimi / Name *
+										{t("settings.roles.name_label")} *
 									</label>
 									<input
 										type="text"
@@ -201,7 +202,7 @@ export default function AdminRoles({ loaderData }: Route.ComponentProps) {
 								</div>
 								<div>
 									<label className="block text-sm font-medium mb-1">
-										Väri / Color
+										{t("settings.roles.color_label")}
 									</label>
 									<select
 										name="color"
@@ -218,7 +219,7 @@ export default function AdminRoles({ loaderData }: Route.ComponentProps) {
 
 							<div>
 								<label className="block text-sm font-medium mb-1">
-									Kuvaus / Description
+									{t("settings.roles.desc_label")}
 								</label>
 								<input
 									type="text"
@@ -234,10 +235,10 @@ export default function AdminRoles({ loaderData }: Route.ComponentProps) {
 									variant="outline"
 									onClick={() => setShowNewRoleForm(false)}
 								>
-									Peruuta / Cancel
+									{t("settings.common.cancel")}
 								</Button>
 								<Button type="submit" disabled={isSubmitting}>
-									{isSubmitting ? "Luodaan..." : "Luo / Create"}
+									{isSubmitting ? t("settings.common.saving") : t("settings.common.create")}
 								</Button>
 							</div>
 						</Form>
@@ -249,14 +250,14 @@ export default function AdminRoles({ loaderData }: Route.ComponentProps) {
 					<div className="lg:col-span-1">
 						<div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
 							<div className="p-4 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-								<h2 className="font-bold">Roolit / Roles ({roles.length})</h2>
+								<h2 className="font-bold">{t("settings.roles.list_title", { count: roles.length })}</h2>
 								<Button
 									size="sm"
 									onClick={() => setShowNewRoleForm(true)}
 									className="bg-blue-600 hover:bg-blue-700"
 								>
 									<span className="material-symbols-outlined text-sm mr-1">add</span>
-									Uusi / New
+									{t("settings.common.new")}
 								</Button>
 							</div>
 							<div className="divide-y divide-gray-100 dark:divide-gray-700">
@@ -277,12 +278,12 @@ export default function AdminRoles({ loaderData }: Route.ComponentProps) {
 													{role.name}
 													{role.isSystem && (
 														<span className="ml-2 text-xs px-2 py-0.5 bg-gray-200 dark:bg-gray-700 rounded">
-															System
+															{t("settings.roles.system")}
 														</span>
 													)}
 												</p>
 												<p className="text-sm text-gray-500">
-													{role.permissionCount} permissions
+													{t("settings.roles.permissions_count", { count: role.permissionCount })}
 												</p>
 											</div>
 										</div>
@@ -310,25 +311,23 @@ export default function AdminRoles({ loaderData }: Route.ComponentProps) {
 											<AlertDialog>
 												<AlertDialogTrigger asChild>
 													<Button variant="destructive" size="sm">
-														Poista / Delete
+														{t("settings.common.delete")}
 													</Button>
 												</AlertDialogTrigger>
 												<AlertDialogContent>
 													<AlertDialogHeader>
-														<AlertDialogTitle>Poista rooli / Delete Role</AlertDialogTitle>
+														<AlertDialogTitle>{t("settings.roles.delete_title")}</AlertDialogTitle>
 														<AlertDialogDescription>
-															Oletko varma että haluat poistaa roolin "{selectedRoleData.name}"? Tätä toimintoa ei voi peruuttaa.
-															<br /><br />
-															Are you sure you want to delete the role "{selectedRoleData.name}"? This action cannot be undone.
+															{t("settings.roles.delete_confirm", { name: selectedRoleData.name })}
 														</AlertDialogDescription>
 													</AlertDialogHeader>
 													<AlertDialogFooter>
-														<AlertDialogCancel>Peruuta / Cancel</AlertDialogCancel>
+														<AlertDialogCancel>{t("settings.common.cancel")}</AlertDialogCancel>
 														<Form method="post">
 															<input type="hidden" name="_action" value="delete" />
 															<input type="hidden" name="roleId" value={selectedRoleData.id} />
 															<AlertDialogAction type="submit" className="bg-red-600 hover:bg-red-700 font-bold text-white border-0">
-																Poista / Delete
+																{t("settings.common.delete")}
 															</AlertDialogAction>
 														</Form>
 													</AlertDialogFooter>
@@ -343,7 +342,7 @@ export default function AdminRoles({ loaderData }: Route.ComponentProps) {
 									<input type="hidden" name="_action" value="updatePermissions" />
 									<input type="hidden" name="roleId" value={selectedRoleData.id} />
 
-									<h3 className="font-bold mb-4">Oikeudet / Permissions</h3>
+									<h3 className="font-bold mb-4">{t("settings.roles.permissions_header")}</h3>
 
 									<div className="space-y-6">
 										{Object.entries(permissionsByCategory).map(([category, perms]) => (
@@ -384,7 +383,7 @@ export default function AdminRoles({ loaderData }: Route.ComponentProps) {
 
 									<div className="mt-6 flex justify-end">
 										<Button type="submit" disabled={isSubmitting}>
-											{isSubmitting ? "Tallennetaan..." : "Tallenna / Save"}
+											{isSubmitting ? t("settings.common.saving") : t("settings.common.save")}
 										</Button>
 									</div>
 								</Form>
@@ -392,10 +391,7 @@ export default function AdminRoles({ loaderData }: Route.ComponentProps) {
 						) : (
 							<div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-12 text-center">
 								<p className="text-gray-500">
-									Valitse rooli vasemmalta muokataksesi oikeuksia
-								</p>
-								<p className="text-gray-400 text-sm">
-									Select a role from the left to edit permissions
+									{t("settings.roles.select_role_msg")}
 								</p>
 							</div>
 						)}

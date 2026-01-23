@@ -4,6 +4,16 @@ import { getAuthenticatedUser } from "~/lib/auth.server";
 import { getDatabase } from "~/db";
 import { SITE_CONFIG } from "~/lib/config.server";
 import { PageWrapper } from "~/components/layout/page-layout";
+import { useTranslation } from "react-i18next";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "~/components/ui/select";
+import { Label } from "~/components/ui/label";
+import i18nConfig from "~/i18n";
+
+const languageLabels: Record<string, string> = {
+    fi: "Suomi (Finnish)",
+    en: "English",
+    sv: "Svenska"
+};
 
 export function meta({ data }: Route.MetaArgs) {
     return [
@@ -38,6 +48,8 @@ export async function loader({ request }: Route.LoaderArgs) {
             apartmentNumber: user.apartmentNumber,
             roleName: role?.name || "Unknown",
             createdAt: user.createdAt,
+            primaryLanguage: user.primaryLanguage,
+            secondaryLanguage: user.secondaryLanguage,
         },
     };
 }
@@ -59,11 +71,15 @@ export async function action({ request }: Route.ActionArgs) {
     const formData = await request.formData();
     const name = formData.get("name") as string;
     const apartmentNumber = formData.get("apartmentNumber") as string;
+    const primaryLanguage = formData.get("primaryLanguage") as string;
+    const secondaryLanguage = formData.get("secondaryLanguage") as string;
 
     // Update user profile
     await db.updateUser(user.id, {
         name: name || user.name,
         apartmentNumber: apartmentNumber || null,
+        primaryLanguage: primaryLanguage || user.primaryLanguage,
+        secondaryLanguage: secondaryLanguage || user.secondaryLanguage,
     });
 
     return { success: true };
@@ -73,6 +89,7 @@ export async function action({ request }: Route.ActionArgs) {
 
 export default function Profile({ loaderData, actionData }: Route.ComponentProps) {
     const { user } = loaderData;
+    const { t, i18n } = useTranslation();
 
     return (
         <PageWrapper>
@@ -80,17 +97,14 @@ export default function Profile({ loaderData, actionData }: Route.ComponentProps
                 {/* Header */}
                 <div className="mb-8">
                     <h1 className="text-3xl md:text-4xl font-black text-gray-900 dark:text-white">
-                        Profiili
+                        {t("profile.title")}
                     </h1>
-                    <p className="text-lg text-gray-500">
-                        Profile
-                    </p>
                 </div>
 
                 {/* Success Message */}
                 {actionData?.success && (
                     <div className="mb-6 p-4 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded-xl">
-                        <p className="font-medium">Profiili päivitetty! / Profile updated!</p>
+                        <p className="font-medium">{t("profile.update_success")}</p>
                     </div>
                 )}
 
@@ -99,9 +113,9 @@ export default function Profile({ loaderData, actionData }: Route.ComponentProps
                     <Form method="post" className="space-y-6">
                         {/* Email (read-only) */}
                         <div>
-                            <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">
-                                Sähköposti / Email
-                            </label>
+                            <Label className="mb-2">
+                                {t("profile.email_label")}
+                            </Label>
                             <input
                                 type="email"
                                 value={user.email}
@@ -109,15 +123,15 @@ export default function Profile({ loaderData, actionData }: Route.ComponentProps
                                 className="w-full px-4 py-3 rounded-xl bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-not-allowed"
                             />
                             <p className="mt-1 text-xs text-gray-500">
-                                Sähköpostia ei voi muuttaa / Email cannot be changed
+                                {t("profile.email_help")}
                             </p>
                         </div>
 
                         {/* Name */}
                         <div>
-                            <label htmlFor="name" className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">
-                                Nimi / Name
-                            </label>
+                            <Label htmlFor="name" className="mb-2">
+                                {t("profile.name_label")}
+                            </Label>
                             <input
                                 type="text"
                                 id="name"
@@ -129,28 +143,63 @@ export default function Profile({ loaderData, actionData }: Route.ComponentProps
 
                         {/* Apartment Number */}
                         <div>
-                            <label htmlFor="apartmentNumber" className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">
-                                Asuntonumero / Apartment Number
-                                <span className="ml-2 text-xs font-normal text-gray-500">(vapaaehtoinen / optional)</span>
-                            </label>
+                            <Label htmlFor="apartmentNumber" className="mb-2">
+                                {t("profile.apartment_label")}
+                                <span className="ml-2 text-xs font-normal text-gray-500">({t("profile.optional")})</span>
+                            </Label>
                             <input
                                 type="text"
                                 id="apartmentNumber"
                                 name="apartmentNumber"
                                 defaultValue={user.apartmentNumber || ""}
-                                placeholder="esim. A 101"
+                                placeholder={t("profile.apartment_placeholder")}
                                 className="w-full px-4 py-3 rounded-xl bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
                             />
                             <p className="mt-1 text-xs text-gray-500">
-                                Asuntonumeroa käytetään äänestysten validointiin / Used for validating votes
+                                {t("profile.apartment_help")}
                             </p>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="primaryLanguage">{t("settings.general.primary_language")}</Label>
+                                <Select name="primaryLanguage" defaultValue={user.primaryLanguage}>
+                                    <SelectTrigger className="w-full px-4 py-3 h-12 rounded-xl">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {i18nConfig.supportedLngs.map(lang => (
+                                            <SelectItem key={lang} value={lang}>
+                                                {languageLabels[lang] || lang}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label htmlFor="secondaryLanguage">{t("settings.general.secondary_language")}</Label>
+                                <Select name="secondaryLanguage" defaultValue={user.secondaryLanguage}>
+                                    <SelectTrigger className="w-full px-4 py-3 h-12 rounded-xl">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {i18nConfig.supportedLngs.map(lang => (
+                                            <SelectItem key={lang} value={lang}>
+                                                {languageLabels[lang] || lang}
+                                            </SelectItem>
+                                        ))}
+                                        <SelectItem value="none">{t("settings.common.none")}</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
                         </div>
 
                         {/* Role (read-only) */}
                         <div>
-                            <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">
-                                Rooli / Role
-                            </label>
+                            <Label className="mb-2">
+                                {t("profile.role_label")}
+                            </Label>
                             <div className="px-4 py-3 rounded-xl bg-gray-100 dark:bg-gray-700">
                                 <span className="font-medium text-gray-700 dark:text-gray-300">
                                     {user.roleName}
@@ -160,12 +209,12 @@ export default function Profile({ loaderData, actionData }: Route.ComponentProps
 
                         {/* Member Since */}
                         <div>
-                            <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">
-                                Jäsen alkaen / Member since
-                            </label>
+                            <Label className="mb-2">
+                                {t("profile.member_since_label")}
+                            </Label>
                             <div className="px-4 py-3 rounded-xl bg-gray-100 dark:bg-gray-700">
                                 <span className="text-gray-700 dark:text-gray-300">
-                                    {new Date(user.createdAt).toLocaleDateString("fi-FI", {
+                                    {new Date(user.createdAt).toLocaleDateString(i18n.language, {
                                         day: "numeric",
                                         month: "long",
                                         year: "numeric",
@@ -180,7 +229,7 @@ export default function Profile({ loaderData, actionData }: Route.ComponentProps
                                 type="submit"
                                 className="w-full px-6 py-4 bg-primary text-white font-bold rounded-xl hover:bg-primary/90 transition-colors"
                             >
-                                Tallenna muutokset / Save Changes
+                                {t("profile.save_changes")}
                             </button>
                         </div>
                     </Form>

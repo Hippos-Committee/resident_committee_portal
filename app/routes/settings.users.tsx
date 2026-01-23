@@ -7,6 +7,7 @@ import { getDatabase, type Role } from "~/db";
 import { PageWrapper } from "~/components/layout/page-layout";
 import { cn } from "~/lib/utils";
 import { SITE_CONFIG } from "~/lib/config.server";
+import { useTranslation } from "react-i18next";
 
 export function meta({ data }: Route.MetaArgs) {
 	return [
@@ -83,6 +84,7 @@ export async function action({ request }: Route.ActionArgs) {
 
 export default function AdminUsers({ loaderData }: Route.ComponentProps) {
 	const { users, roles } = loaderData;
+	const { t } = useTranslation();
 
 	return (
 		<PageWrapper>
@@ -91,9 +93,8 @@ export default function AdminUsers({ loaderData }: Route.ComponentProps) {
 				<div className="flex items-center justify-between mb-8">
 					<div>
 						<h1 className="text-3xl md:text-4xl font-black text-gray-900 dark:text-white">
-							Käyttäjähallinta
+							{t("settings.users.title")}
 						</h1>
-						<p className="text-lg text-gray-500">User Management</p>
 					</div>
 				</div>
 
@@ -105,19 +106,19 @@ export default function AdminUsers({ loaderData }: Route.ComponentProps) {
 							<thead className="bg-gray-50 dark:bg-gray-900">
 								<tr>
 									<th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-500">
-										Nimi / Name
+										{t("settings.users.headers.name")}
 									</th>
 									<th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-500">
-										Sähköposti / Email
+										{t("settings.users.headers.email")}
 									</th>
 									<th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-500">
-										Asunto / Apartment
+										{t("settings.users.headers.apartment")}
 									</th>
 									<th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-500">
-										Rooli / Role
+										{t("settings.users.headers.role")}
 									</th>
 									<th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-500">
-										Liittynyt / Joined
+										{t("settings.users.headers.joined")}
 									</th>
 								</tr>
 							</thead>
@@ -128,7 +129,7 @@ export default function AdminUsers({ loaderData }: Route.ComponentProps) {
 											colSpan={5}
 											className="px-4 py-12 text-center text-gray-500"
 										>
-											Ei käyttäjiä / No users yet
+											{t("settings.users.no_users")}
 										</td>
 									</tr>
 								) : (
@@ -162,7 +163,8 @@ interface UserRowProps {
 
 function UserRow({ user, roles }: UserRowProps) {
 	const fetcher = useFetcher<{ success: boolean; error?: string }>();
-	const formattedDate = new Date(user.createdAt).toLocaleDateString("fi-FI", {
+	const { t, i18n } = useTranslation();
+	const formattedDate = new Date(user.createdAt).toLocaleDateString(i18n.language, {
 		day: "numeric",
 		month: "short",
 		year: "numeric",
@@ -172,12 +174,12 @@ function UserRow({ user, roles }: UserRowProps) {
 	useEffect(() => {
 		if (fetcher.state === "idle" && fetcher.data) {
 			if (fetcher.data.success) {
-				toast.success("Rooli päivitetty / Role updated");
+				toast.success(t("settings.users.role_updated"));
 			} else {
 				if (fetcher.data.error === "super_admin_protected") {
-					toast.error("Pääkäyttäjän roolia ei voi muuttaa / Cannot change Super Admin role");
+					toast.error(t("settings.users.cannot_change_super_admin"));
 				} else {
-					toast.error("Roolin päivitys epäonnistui / Failed to update role");
+					toast.error(t("settings.users.update_failed"));
 				}
 			}
 		}
@@ -190,7 +192,7 @@ function UserRow({ user, roles }: UserRowProps) {
 					{user.name}
 					{user.isSuperAdmin && (
 						<span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400">
-							Super Admin
+							{t("settings.users.super_admin")}
 						</span>
 					)}
 				</p>

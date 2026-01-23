@@ -6,8 +6,9 @@ import { queryClient } from "~/lib/query-client";
 import { queryKeys, STALE_TIME } from "~/lib/query-config";
 import { SITE_CONFIG } from "~/lib/config.server";
 import { useUser } from "~/contexts/user-context";
-import { getAuthenticatedUser, getGuestPermissions } from "~/lib/auth.server";
+import { getAuthenticatedUser, getGuestContext } from "~/lib/auth.server";
 import { getDatabase } from "~/db";
+import { useTranslation } from "react-i18next";
 import { useLanguage } from "~/contexts/language-context";
 import {
     Accordion,
@@ -26,9 +27,21 @@ export function meta({ data }: Route.MetaArgs) {
 export async function loader({ request }: Route.LoaderArgs) {
     // Check permission (works for both logged-in users and guests)
     const authUser = await getAuthenticatedUser(request, getDatabase);
-    const permissions = authUser
-        ? authUser.permissions
-        : await getGuestPermissions(() => getDatabase());
+
+    let permissions: string[];
+    let languages: { primary: string; secondary: string };
+
+    if (authUser) {
+        permissions = authUser.permissions;
+        languages = {
+            primary: authUser.primaryLanguage,
+            secondary: authUser.secondaryLanguage
+        };
+    } else {
+        const guestContext = await getGuestContext(() => getDatabase());
+        permissions = guestContext.permissions;
+        languages = guestContext.languages;
+    }
 
     const canRead = permissions.some(p => p === "minutes:read" || p === "*");
     if (!canRead) {
@@ -56,31 +69,32 @@ export async function loader({ request }: Route.LoaderArgs) {
         uniqueYears,
         filters: { year: yearFilter, name: nameFilter },
         hasFilters,
+        languages,
     };
 }
 
 export default function Minutes({ loaderData }: Route.ComponentProps) {
-    const { minutesByYear, archiveUrl, uniqueYears, filters, hasFilters } = loaderData;
+    const { minutesByYear, archiveUrl, uniqueYears, filters, hasFilters, languages } = loaderData;
     const { hasPermission } = useUser();
     const canSeeNamingGuide = hasPermission("minutes:naming-guide");
     const currentYear = new Date().getFullYear().toString();
 
-    const { language, isInfoReel } = useLanguage();
-    const t = (fi: string, en: string) => (language === "fi" || isInfoReel) ? fi : en;
+    const { t, i18n } = useTranslation();
+    const { isInfoReel } = useLanguage();
 
     // Configure search fields
     const searchFields: SearchField[] = [
         {
             name: "name",
-            label: t("Nimi", "Name"),
+            label: t("minutes.search.name_label"),
             type: "text",
-            placeholder: t("Hae nimellä...", "Search by name..."),
+            placeholder: t("minutes.search.name_placeholder"),
         },
         {
             name: "year",
-            label: t("Vuosi", "Year"),
+            label: t("minutes.search.year_label"),
             type: "select",
-            placeholder: t("Valitse vuosi...", "Select year..."),
+            placeholder: t("minutes.search.year_placeholder"),
             options: uniqueYears,
         },
     ];
@@ -102,7 +116,7 @@ export default function Minutes({ loaderData }: Route.ComponentProps) {
             qrUrl={archiveUrl}
             title={
                 <h2 className="text-3xl font-black text-gray-900 dark:text-white tracking-tight">
-                    {t("Kaikki pöytäkirjat", "All Minutes")} <br />
+                    {t("minutes.all_minutes")} <br />
                     {isInfoReel && <span className="text-3xl text-gray-400 font-bold">All Minutes</span>}
                 </h2>
             }
@@ -116,8 +130,8 @@ export default function Minutes({ loaderData }: Route.ComponentProps) {
             <ActionButton
                 href={archiveUrl}
                 icon="folder_open"
-                labelFi="Arkisto"
-                labelEn="Archive"
+                labelPrimary={t("minutes.archive", { lng: languages.primary })}
+                labelSecondary={t("minutes.archive", { lng: languages.secondary })}
                 external={true}
             />
         </div>
@@ -128,7 +142,10 @@ export default function Minutes({ loaderData }: Route.ComponentProps) {
             <SplitLayout
                 right={RightContent}
                 footer={FooterContent}
-                header={{ finnish: "Pöytäkirjat", english: "Minutes" }}
+                header={{
+                    primary: t("minutes.title", { lng: languages.primary }),
+                    secondary: t("minutes.title", { lng: languages.secondary })
+                }}
             >
                 <div className="space-y-8">
                     {/* Staff instructions for naming convention - outside scrollable area */}
@@ -140,13 +157,13 @@ export default function Minutes({ loaderData }: Route.ComponentProps) {
                                 </span>
                                 <div className="text-sm text-blue-800 dark:text-blue-200">
                                     <p className="font-bold mb-1">
-                                        {t("Pöytäkirjojen nimeäminen", "Naming Minutes")}
+                                        {t("minutes.naming_guide.title")}
                                     </p>
                                     <p className="mb-2">
-                                        {t("Käytä muotoa", "Use format")}: <code className="px-1.5 py-0.5 bg-blue-100 dark:bg-blue-800 rounded font-mono text-xs">YYYY-MM-DD_KuvausName.pdf</code>
+                                        {t("minutes.naming_guide.use_format")}: <code className="px-1.5 py-0.5 bg-blue-100 dark:bg-blue-800 rounded font-mono text-xs">YYYY-MM-DD_KuvausName.pdf</code>
                                     </p>
                                     <p className="text-xs opacity-80">
-                                        {t("Esim: 2026-01-05_Hallituksen_kokous_1.pdf — Tiedostot järjestyvät automaattisesti uusin ensin.", "Ex: 2026-01-05_Board_Meeting_1.pdf - Files are ordered newest first.")}
+                                        {t("minutes.naming_guide.example")}
                                     </p>
                                 </div>
                             </div>
@@ -159,7 +176,7 @@ export default function Minutes({ loaderData }: Route.ComponentProps) {
                             <div className="bg-gray-100 dark:bg-gray-800 rounded-xl p-6 text-center">
                                 <span className="material-symbols-outlined text-4xl text-gray-400 mb-2">description</span>
                                 <p className="text-gray-600 dark:text-gray-400">
-                                    {hasFilters ? t("Ei tuloksia", "No results") : t("Ei pöytäkirjoja", "No minutes")}
+                                    {hasFilters ? t("minutes.no_results") : t("minutes.no_minutes")}
                                 </p>
                             </div>
                         ) : (
@@ -174,7 +191,7 @@ export default function Minutes({ loaderData }: Route.ComponentProps) {
                                                 </p>
                                                 {yearGroup.year === currentYear && (
                                                     <span className="text-xs font-bold uppercase tracking-wider opacity-80">
-                                                        {t("Tämä vuosi", "This Year")}
+                                                        {t("minutes.this_year")}
                                                     </span>
                                                 )}
                                             </div>
@@ -185,7 +202,7 @@ export default function Minutes({ loaderData }: Route.ComponentProps) {
                                             {yearGroup.files.length === 0 ? (
                                                 <div className="p-6 rounded-2xl bg-gray-50 dark:bg-gray-800/50 text-center">
                                                     <p className="text-gray-400 font-medium">
-                                                        {t("Ei vielä pöytäkirjoja", "No minutes yet")}
+                                                        {t("minutes.no_minutes_yet")}
                                                     </p>
                                                 </div>
                                             ) : (

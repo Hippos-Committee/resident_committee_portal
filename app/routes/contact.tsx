@@ -1,5 +1,5 @@
 import type { Route } from "./+types/contact";
-import { Form, useActionData, useSearchParams, useRouteLoaderData } from "react-router";
+import { Form, useActionData, useSearchParams } from "react-router";
 import { PageWrapper } from "~/components/layout/page-layout";
 import { cn } from "~/lib/utils";
 import { Button } from "~/components/ui/button";
@@ -7,7 +7,7 @@ import { useState, useEffect } from "react";
 import { SITE_CONFIG } from "~/lib/config.server";
 import { getSession } from "~/lib/auth.server";
 import { getDatabase, type SubmissionType } from "~/db";
-import { useLanguage } from "~/contexts/language-context";
+import { useTranslation } from "react-i18next";
 
 export function meta({ data }: Route.MetaArgs) {
     return [
@@ -125,7 +125,7 @@ export default function Contact({ loaderData, actionData }: Route.ComponentProps
     const [searchParams] = useSearchParams();
     const preselectedType = searchParams.get("type");
     const { userDetails } = loaderData;
-    const { language } = useLanguage();
+    const { t } = useTranslation();
 
     const [selectedType, setSelectedType] = useState<string | null>(preselectedType);
 
@@ -135,7 +135,14 @@ export default function Contact({ loaderData, actionData }: Route.ComponentProps
         }
     }, [preselectedType]);
 
-    const selectedFormType = FORM_TYPES.find(t => t.id === selectedType);
+    // Derived form types with translations
+    const formTypes = FORM_TYPES.map(ft => ({
+        ...ft,
+        title: t(`contact.types.${ft.id}.title`),
+        placeholder: t(`contact.types.${ft.id}.placeholder`)
+    }));
+
+    const selectedFormType = formTypes.find(t => t.id === selectedType);
 
     // Success state
     if (submitted) {
@@ -147,19 +154,17 @@ export default function Contact({ loaderData, actionData }: Route.ComponentProps
                     </div>
                     <div>
                         <h2 className="text-2xl font-black text-gray-900 dark:text-white mb-2">
-                            {language === "fi" ? "Viesti lähetetty!" : "Message Sent!"}
+                            {t("contact.success.title")}
                         </h2>
                         <p className="text-gray-500 dark:text-gray-400 font-medium">
-                            {language === "fi"
-                                ? "Kiitos yhteydenotostasi! Vastaamme sinulle mahdollisimman pian."
-                                : "Thank you for contacting us! We will respond as soon as possible."}
+                            {t("contact.success.message")}
                         </p>
                     </div>
                     <Button
                         className="w-full rounded-full font-bold h-12"
                         onClick={() => window.location.href = "/"}
                     >
-                        {language === "fi" ? "Takaisin etusivulle" : "Back to Home"}
+                        {t("contact.success.back_home")}
                     </Button>
                 </div>
             </div>
@@ -172,17 +177,17 @@ export default function Contact({ loaderData, actionData }: Route.ComponentProps
                 {/* Header */}
                 <div className="text-center mb-8">
                     <h1 className="text-4xl md:text-5xl font-black text-gray-900 dark:text-white tracking-tight">
-                        {language === "fi" ? "Ota yhteyttä" : "Contact Us"}
+                        {t("contact.header")}
                     </h1>
                 </div>
 
                 {/* Type Selection */}
                 <div className="mb-8">
                     <label className="block text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-3 ml-1">
-                        {language === "fi" ? "Valitse aihe" : "Select Topic"}
+                        {t("contact.select_topic")}
                     </label>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                        {FORM_TYPES.map((type) => (
+                        {formTypes.map((type) => (
                             <button
                                 key={type.id}
                                 type="button"
@@ -198,7 +203,7 @@ export default function Contact({ loaderData, actionData }: Route.ComponentProps
                                     {type.icon}
                                 </span>
                                 <span className="text-sm font-bold text-center leading-tight">
-                                    {language === "fi" ? type.titleFi : type.titleEn}
+                                    {type.title}
                                 </span>
                             </button>
                         ))}
@@ -213,7 +218,7 @@ export default function Contact({ loaderData, actionData }: Route.ComponentProps
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <div className="space-y-1.5">
                                 <label htmlFor="name" className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 ml-1">
-                                    {language === "fi" ? "Nimi" : "Name"}
+                                    {t("contact.form.name")}
                                 </label>
                                 <input
                                     type="text"
@@ -227,7 +232,7 @@ export default function Contact({ loaderData, actionData }: Route.ComponentProps
 
                             <div className="space-y-1.5">
                                 <label htmlFor="email" className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 ml-1">
-                                    {language === "fi" ? "Sähköposti" : "Email"}
+                                    {t("contact.form.email")}
                                 </label>
                                 <input
                                     type="email"
@@ -241,14 +246,14 @@ export default function Contact({ loaderData, actionData }: Route.ComponentProps
 
                             <div className="space-y-1.5">
                                 <label htmlFor="apartmentNumber" className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 ml-1">
-                                    {language === "fi" ? "Asunto" : "Apartment"}
+                                    {t("contact.form.apartment")}
                                 </label>
                                 <input
                                     type="text"
                                     name="apartmentNumber"
                                     id="apartmentNumber"
                                     required
-                                    placeholder={language === "fi" ? "esim. A 123" : "e.g. A 123"}
+                                    placeholder={t("contact.form.apartment_placeholder")}
                                     defaultValue={userDetails?.apartmentNumber || ""}
                                     className="w-full h-12 px-4 rounded-xl bg-gray-50 dark:bg-gray-800 border-2 border-transparent focus:border-primary focus:bg-white dark:focus:bg-gray-900 outline-none transition-all font-medium placeholder:text-gray-400 placeholder:opacity-60"
                                 />
@@ -265,23 +270,21 @@ export default function Contact({ loaderData, actionData }: Route.ComponentProps
                                     className="w-5 h-5 rounded border-2 border-gray-300 dark:border-gray-600 text-primary focus:ring-primary focus:ring-offset-0 cursor-pointer"
                                 />
                                 <span className="text-sm text-gray-600 dark:text-gray-400 group-hover:text-gray-900 dark:group-hover:text-gray-200 transition-colors">
-                                    {language === "fi"
-                                        ? "Päivitä asuntonumero profiiliini"
-                                        : "Update apartment number in my profile"}
+                                    {t("contact.form.update_apartment_profile")}
                                 </span>
                             </label>
                         )}
 
                         <div className="space-y-1.5">
                             <label htmlFor="message" className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 ml-1">
-                                {language === "fi" ? "Viesti" : "Message"}
+                                {t("contact.form.message")}
                             </label>
                             <textarea
                                 name="message"
                                 id="message"
                                 rows={6}
                                 required
-                                placeholder={language === "fi" ? selectedFormType?.placeholderFi : selectedFormType?.placeholderEn}
+                                placeholder={selectedFormType?.placeholder}
                                 className="w-full p-4 rounded-xl bg-gray-50 dark:bg-gray-800 border-2 border-transparent focus:border-primary focus:bg-white dark:focus:bg-gray-900 outline-none transition-all font-medium resize-none placeholder:text-gray-400 placeholder:opacity-60"
                             />
                         </div>
@@ -290,7 +293,7 @@ export default function Contact({ loaderData, actionData }: Route.ComponentProps
                             type="submit"
                             className="w-full h-14 rounded-xl text-lg font-black uppercase tracking-wide hover:scale-[1.02] transition-transform"
                         >
-                            {language === "fi" ? "Lähetä" : "Send"}
+                            {t("contact.form.send")}
                         </Button>
                     </Form>
                 )}
@@ -300,7 +303,7 @@ export default function Contact({ loaderData, actionData }: Route.ComponentProps
                     <div className="text-center py-12 text-gray-400">
                         <span className="material-symbols-outlined text-5xl mb-4 block opacity-50">arrow_upward</span>
                         <p className="font-medium">
-                            {language === "fi" ? "Valitse aihe aloittaaksesi" : "Select a topic to begin"}
+                            {t("contact.select_topic_prompt")}
                         </p>
                     </div>
                 )}

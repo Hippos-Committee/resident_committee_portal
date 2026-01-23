@@ -5,9 +5,10 @@ import { getCalendarEvents, getCalendarUrl } from "~/lib/google.server";
 import { queryClient } from "~/lib/query-client";
 import { queryKeys, STALE_TIME } from "~/lib/query-config";
 import { SITE_CONFIG } from "~/lib/config.server";
-import { getAuthenticatedUser, getGuestPermissions } from "~/lib/auth.server";
+import { getAuthenticatedUser, getGuestContext } from "~/lib/auth.server";
 import { getDatabase } from "~/db";
 import { useLanguage } from "~/contexts/language-context";
+import { useTranslation } from "react-i18next";
 
 export function meta({ data }: Route.MetaArgs) {
     return [
@@ -21,24 +22,34 @@ interface Event {
     type: "meeting" | "social" | "private";
     title: string;
     location: string;
-    date: string; // for compatibility / sorting
-    displayDate: { fi: string; en: string };
-    displayDay: { fi: string; en: string };
-    displayTime: { fi: string; en: string };
+    startDate: string;
+    isAllDay: boolean;
 }
 
 interface GroupedMonth {
     monthKey: string;
-    monthName: { fi: string; en: string };
+    monthDate: string;
     events: Event[];
 }
 
 export async function loader({ request }: Route.LoaderArgs) {
     // Check permission (works for both logged-in users and guests)
     const authUser = await getAuthenticatedUser(request, getDatabase);
-    const permissions = authUser
-        ? authUser.permissions
-        : await getGuestPermissions(() => getDatabase());
+
+    let permissions: string[];
+    let languages: { primary: string; secondary: string };
+
+    if (authUser) {
+        permissions = authUser.permissions;
+        languages = {
+            primary: authUser.primaryLanguage,
+            secondary: authUser.secondaryLanguage
+        };
+    } else {
+        const guestContext = await getGuestContext(() => getDatabase());
+        permissions = guestContext.permissions;
+        languages = guestContext.languages;
+    }
 
     const canRead = permissions.some(p => p === "events:read" || p === "*");
     if (!canRead) {
@@ -67,6 +78,7 @@ export async function loader({ request }: Route.LoaderArgs) {
             siteConfig: SITE_CONFIG,
             groupedMonths: [],
             calendarUrl,
+            languages,
             filters: { title: titleFilter },
             hasFilters: !!titleFilter,
         };
@@ -76,36 +88,16 @@ export async function loader({ request }: Route.LoaderArgs) {
 
     calendarItems.forEach((item: any) => {
         const startDate = new Date(item.start?.dateTime || item.start?.date || new Date());
-
-        const monthNameFin = startDate.toLocaleDateString("fi-FI", { month: "long" });
-        const monthNameEng = startDate.toLocaleDateString("en-GB", { month: "long" });
         const year = startDate.getFullYear();
-
         const displayMonthKey = `${year}-${startDate.getMonth()}`; // unique key
-        const displayMonthObj = {
-            fi: `${monthNameFin.charAt(0).toUpperCase() + monthNameFin.slice(1)} ${year}`,
-            en: `${monthNameEng.charAt(0).toUpperCase() + monthNameEng.slice(1)} ${year}`,
-        };
 
         const isAllDay = !item.start?.dateTime;
         const summary = item.summary || "Untitled Event";
 
         const event: Event = {
             id: item.id,
-            date: startDate.getDate().toString(),
-            // Replacing raw strings with structured objects
-            displayDate: {
-                fi: startDate.getDate().toString(),
-                en: startDate.getDate().toString()
-            },
-            displayDay: {
-                fi: startDate.toLocaleDateString("fi-FI", { weekday: "short" }),
-                en: startDate.toLocaleDateString("en-GB", { weekday: "short" })
-            },
-            displayTime: {
-                fi: isAllDay ? "Koko päivä" : startDate.toLocaleTimeString("fi-FI", { hour: "2-digit", minute: "2-digit" }),
-                en: isAllDay ? "All Day" : startDate.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })
-            },
+            startDate: startDate.toISOString(),
+            isAllDay,
             title: summary,
             location: item.location || "",
             type: (item.description?.includes("#meeting") || summary.toLowerCase().includes("kokous")) ? "meeting" : "social",
@@ -117,30 +109,14 @@ export async function loader({ request }: Route.LoaderArgs) {
         groupedMap.get(displayMonthKey)?.push(event);
     });
 
-    // Create array with enriched month names
+    // Create array with month dates
     const groupedMonths: GroupedMonth[] = Array.from(groupedMap.entries()).map(([key, events]) => {
-        // Find one event to get the month object again (slightly inefficient but safe)
-        // Or store it in a parallel map. Let's just reconstruct or store in map value. 
-        // Better: Map<string, { monthName: {fi,en}, events: Event[] }>
-        // But for minimal diff, let's just reconstruct from first event's date or similar.
-        // Actually, let's change groupedMap value type.
-        // Wait, I cannot easily change map value type in this small block without rewriting loop.
-        // I'll grab the first event's date and reconstruct month name.
-        const firstEvent = events[0];
-        // Wait, I don't have the date object here.
-        // I need to store monthName in the map or derive it.
-        // Let's use the key `YYYY-M` to derive it.
         const [y, m] = key.split("-").map(Number);
         const d = new Date(y, m, 1);
-        const monthNameFin = d.toLocaleDateString("fi-FI", { month: "long" });
-        const monthNameEng = d.toLocaleDateString("en-GB", { month: "long" });
 
         return {
             monthKey: key,
-            monthName: {
-                fi: `${monthNameFin.charAt(0).toUpperCase() + monthNameFin.slice(1)} ${y}`,
-                en: `${monthNameEng.charAt(0).toUpperCase() + monthNameEng.slice(1)} ${y}`
-            },
+            monthDate: d.toISOString(),
             events
         };
     });
@@ -148,24 +124,69 @@ export async function loader({ request }: Route.LoaderArgs) {
     return {
         siteConfig: SITE_CONFIG,
         groupedMonths,
-        calendarUrl
+        calendarUrl,
+        languages,
+        filters: { title: titleFilter },
+        hasFilters: !!titleFilter,
     };
 }
 
 export default function Events({ loaderData }: Route.ComponentProps) {
-    const { groupedMonths, calendarUrl, filters, hasFilters } = loaderData;
+    const { groupedMonths, calendarUrl, filters, hasFilters, languages } = loaderData;
     const { language, isInfoReel } = useLanguage();
-    // Helper
-    const t = (fi: string, en: string) => (language === "fi" || isInfoReel) ? fi : en;
-    const tObj = (obj: { fi: string, en: string }) => (language === "fi" || isInfoReel) ? obj.fi : obj.en;
+    const { t, i18n } = useTranslation();
+
+    // Determine current locale for formatting
+    // If language is 'en', force 'en-GB' to avoid 'en-US' (month-first) formatting.
+    // Otherwise use the language code as-is (e.g. 'fi', 'sv') which usually defaults to day-first.
+    const currentLocale = i18n.language === "en" ? "en-GB" : i18n.language;
+
+    // Helper to format month name
+    const formatMonth = (isoDate: string) => {
+        const date = new Date(isoDate);
+        const monthName = date.toLocaleDateString(currentLocale, { month: "long" });
+        const year = date.getFullYear();
+        return `${monthName.charAt(0).toUpperCase() + monthName.slice(1)} ${year}`;
+    };
+
+    // Helper to format English month name for dual display
+    const formatMonthEn = (isoDate: string) => {
+        const date = new Date(isoDate);
+        const monthName = date.toLocaleDateString("en-GB", { month: "long" });
+        const year = date.getFullYear();
+        return `${monthName.charAt(0).toUpperCase() + monthName.slice(1)} ${year}`;
+    };
+
+    // Helper to format event day (Mon, Tue...)
+    const formatDay = (isoDate: string) => {
+        return new Date(isoDate).toLocaleDateString(currentLocale, { weekday: "short" });
+    };
+
+    // Helper to format event date number (1, 2...)
+    const formatDateNum = (isoDate: string) => {
+        return new Date(isoDate).getDate().toString();
+    };
+
+    // Helper to format event time
+    const formatTime = (event: Event) => {
+        if (event.isAllDay) {
+            // For info reel, force Finnish (which is default behavior of key lookup if lang is fi)
+            // but if we want specific behavior:
+            if (isInfoReel) {
+                return t("events.all_day", { lng: "fi" });
+            }
+            return t("events.all_day");
+        }
+        return new Date(event.startDate).toLocaleTimeString(currentLocale, { hour: "2-digit", minute: "2-digit" });
+    };
 
     // Configure search fields
     const searchFields: SearchField[] = [
         {
             name: "title",
-            label: t("Tapahtuma", "Event"),
+            label: t("events.search.label"),
             type: "text",
-            placeholder: t("Hae nimellä...", "Search by name..."),
+            placeholder: t("events.search.placeholder"),
         },
     ];
 
@@ -187,8 +208,8 @@ export default function Events({ loaderData }: Route.ComponentProps) {
             qrUrl={calendarUrl || undefined}
             title={
                 <h2 className="text-3xl font-black text-gray-900 dark:text-white tracking-tight">
-                    {t("Avaa kalenteri", "Open Calendar")} <br />
-                    {isInfoReel && <span className="text-lg text-gray-400 font-bold">Open Calendar</span>}
+                    {t("events.open_calendar")} <br />
+                    {isInfoReel && <span className="text-lg text-gray-400 font-bold">{t("events.open_calendar", { lng: "en" })}</span>}
                 </h2>
             }
         />
@@ -202,8 +223,8 @@ export default function Events({ loaderData }: Route.ComponentProps) {
                 <ActionButton
                     href={calendarUrl}
                     icon="calendar_month"
-                    labelFi="Avaa kalenteri"
-                    labelEn="Open Calendar"
+                    labelPrimary={t("events.open_calendar", { lng: languages.primary })}
+                    labelSecondary={t("events.open_calendar", { lng: languages.secondary })}
                     external={true}
                 />
             )}
@@ -215,13 +236,16 @@ export default function Events({ loaderData }: Route.ComponentProps) {
             <SplitLayout
                 right={RightContent}
                 footer={FooterContent}
-                header={{ finnish: "Tapahtumat", english: "Events" }}
+                header={{
+                    primary: t("events.title", { lng: languages.primary }),
+                    secondary: t("events.title", { lng: languages.secondary })
+                }}
             >
                 <ContentArea>
                     {!filteredMonths.length ? (
                         <div className="bg-primary rounded-xl mb-8 px-8 py-4 flex items-center justify-end text-white">
                             <p className="text-xl font-bold leading-none uppercase tracking-widest">
-                                {hasFilters ? t("Ei tuloksia", "No results") : t("Tulevat", "Upcoming")}
+                                {hasFilters ? t("events.no_results") : t("events.upcoming")}
                             </p>
                         </div>
                     ) : null}
@@ -231,8 +255,8 @@ export default function Events({ loaderData }: Route.ComponentProps) {
                             <div key={group.monthKey} className="relative">
                                 <div className="bg-primary rounded-xl mb-8 px-8 py-4 flex items-center justify-end text-white sticky top-0 z-10">
                                     <p className="text-xl font-bold leading-none uppercase tracking-widest">
-                                        {tObj(group.monthName)}
-                                        {isInfoReel && <span className="opacity-60 text-lg ml-2">/ {group.monthName.en}</span>}
+                                        {formatMonth(group.monthDate)}
+                                        {isInfoReel && <span className="opacity-60 text-lg ml-2">/ {formatMonthEn(group.monthDate)}</span>}
                                     </p>
                                 </div>
 
@@ -246,9 +270,9 @@ export default function Events({ loaderData }: Route.ComponentProps) {
                                                 <div
                                                     className={`w-14 md:w-20 flex flex-col items-center justify-center shrink-0 leading-none mr-4 md:mr-6 pt-1 md:pt-0 ${event.type === "meeting" ? "text-primary dark:text-red-400" : event.type === "private" ? "text-gray-400 dark:text-gray-500" : "text-gray-900 dark:text-gray-100"}`}
                                                 >
-                                                    <span className="text-2xl md:text-4xl font-black tracking-tighter">{event.date}</span>
+                                                    <span className="text-2xl md:text-4xl font-black tracking-tighter">{formatDateNum(event.startDate)}</span>
                                                     <span className="text-[10px] md:text-xs font-bold uppercase mt-1 tracking-wider">
-                                                        {tObj(event.displayDay)}
+                                                        {formatDay(event.startDate)}
                                                     </span>
                                                 </div>
                                                 <div className="flex-1 min-w-0 py-0.5">
@@ -264,7 +288,7 @@ export default function Events({ loaderData }: Route.ComponentProps) {
                                                             <span className="material-symbols-outlined text-[16px] md:text-[18px]">
                                                                 schedule
                                                             </span>{" "}
-                                                            {tObj(event.displayTime)}
+                                                            {formatTime(event)}
                                                         </span>
                                                         {event.location && (
                                                             <span className="flex items-center gap-1.5 truncate">
@@ -286,7 +310,7 @@ export default function Events({ loaderData }: Route.ComponentProps) {
 
                     {groupedMonths.length === 0 && (
                         <div className="p-12 text-center text-gray-400 font-bold uppercase tracking-widest">
-                            {t("Ei tulevia tapahtumia", "No upcoming events")}
+                            {t("events.no_upcoming")}
                         </div>
                     )}
                 </ContentArea>

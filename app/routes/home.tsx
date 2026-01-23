@@ -1,6 +1,9 @@
 import type { Route } from "./+types/home";
 import { PageWrapper, SplitLayout, QRPanel, ContentArea } from "~/components/layout/page-layout";
+import { getAuthenticatedUser, getGuestContext } from "~/lib/auth.server";
+import { getDatabase } from "~/db";
 import { SITE_CONFIG } from "~/lib/config.server";
+import { useTranslation } from "react-i18next";
 
 export function meta({ data }: Route.MetaArgs) {
   return [
@@ -11,37 +14,37 @@ export function meta({ data }: Route.MetaArgs) {
 
 interface InvolvementOption {
   id: string;
-  title: string;
-  subtitle: string;
   icon: string;
 }
 
-export function loader({ }: Route.LoaderArgs) {
+export async function loader({ request }: Route.LoaderArgs) {
+  const authUser = await getAuthenticatedUser(request, getDatabase);
+  let languages;
+  if (authUser) {
+    languages = { primary: authUser.primaryLanguage, secondary: authUser.secondaryLanguage };
+  } else {
+    const ctx = await getGuestContext(() => getDatabase());
+    languages = ctx.languages;
+  }
+
   return {
     siteConfig: SITE_CONFIG,
+    languages,
     options: [
       {
         id: "committee",
-        title: "Hae toimikuntaan",
-        subtitle: "Apply for the Tenant Committee",
         icon: "diversity_3",
       },
       {
         id: "events",
-        title: "Ehdota tapahtumia",
-        subtitle: "Suggest Events",
         icon: "celebration",
       },
       {
         id: "purchases",
-        title: "Pyydä hankintoja",
-        subtitle: "Request Purchases",
         icon: "shopping_cart",
       },
       {
         id: "questions",
-        title: "Esitä kysymyksiä",
-        subtitle: "Submit Questions",
         icon: "question_mark",
       },
     ] as InvolvementOption[],
@@ -49,7 +52,13 @@ export function loader({ }: Route.LoaderArgs) {
 }
 
 export default function Home({ loaderData }: Route.ComponentProps) {
-  const { options } = loaderData;
+  const { options, languages } = loaderData;
+  const { t, i18n } = useTranslation();
+
+  // Determine which language to show as secondary (small text)
+  // If current language matches the user's secondary language, show their primary instead to avoid duplicates
+  // If they are the same (e.g. user set both to EN), it will just show EN twice, which is acceptable
+  const secondaryDisplayLang = i18n.language === languages.secondary ? languages.primary : languages.secondary;
 
   // QR Panel only shown in info reel mode
   const RightContent = (
@@ -57,8 +66,10 @@ export default function Home({ loaderData }: Route.ComponentProps) {
       qrPath="/contact"
       title={
         <h2 className="text-3xl font-black text-gray-900 dark:text-white tracking-tight">
-          Ota yhteyttä <br />
-          <span className="text-lg text-gray-400 font-bold">Contact Us</span>
+          {t("home.contact.title")} <br />
+          <span className="text-lg text-gray-400 font-bold">
+            {t("home.contact.title", { lng: secondaryDisplayLang })}
+          </span>
         </h2>
       }
     />
@@ -68,7 +79,10 @@ export default function Home({ loaderData }: Route.ComponentProps) {
     <PageWrapper>
       <SplitLayout
         right={RightContent}
-        header={{ finnish: "Osallistu", english: "Get Involved" }}
+        header={{
+          primary: t("home.header"),
+          secondary: t("home.header", { lng: secondaryDisplayLang })
+        }}
       >
         <ContentArea className="space-y-4">
           {options.map((option) => (
@@ -84,10 +98,10 @@ export default function Home({ loaderData }: Route.ComponentProps) {
               </div>
               <div className="flex-1">
                 <h3 className="text-xl md:text-3xl font-bold text-gray-900 dark:text-white leading-tight group-hover:text-primary transition-colors">
-                  {option.title}
+                  {t(`home.options.${option.id}.title`)}
                 </h3>
                 <p className="text-lg md:text-3xl font-medium text-gray-500 dark:text-gray-400">
-                  {option.subtitle}
+                  {t(`home.options.${option.id}.title`, { lng: secondaryDisplayLang })}
                 </p>
               </div>
               <span className="material-symbols-outlined text-2xl text-gray-300 dark:text-gray-600 group-hover:text-primary group-hover:translate-x-1 transition-all">

@@ -7,6 +7,7 @@ import { SUBMISSION_STATUSES } from "~/lib/constants";
 import { PageWrapper } from "~/components/layout/page-layout";
 import { cn } from "~/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
+import { useTranslation } from "react-i18next";
 
 export function meta({ data }: Route.MetaArgs) {
     return [
@@ -76,6 +77,13 @@ const STATUS_COLORS: Record<string, string> = {
 
 export default function Submissions({ loaderData }: Route.ComponentProps) {
     const { session, submissions, canDelete } = loaderData;
+    const { t, i18n } = useTranslation();
+
+    const getStatusLabel = (status: string) => {
+        if (!status) return status;
+        const parts = status.split(" / ");
+        return i18n.language === "fi" ? parts[0] : (parts[1] || parts[0]);
+    };
 
     return (
         <PageWrapper>
@@ -84,11 +92,8 @@ export default function Submissions({ loaderData }: Route.ComponentProps) {
                 <div className="flex items-center justify-between mb-8">
                     <div>
                         <h1 className="text-3xl md:text-4xl font-black text-gray-900 dark:text-white">
-                            Yhteydenotot
+                            {t("submissions.title")}
                         </h1>
-                        <p className="text-lg text-gray-500">
-                            Submissions
-                        </p>
                     </div>
                     <div className="flex items-center gap-4">
                         <div className="text-right">
@@ -104,14 +109,14 @@ export default function Submissions({ loaderData }: Route.ComponentProps) {
                 <div className="space-y-4 md:hidden mb-8">
                     {submissions.length === 0 ? (
                         <div className="p-8 text-center text-gray-500 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
-                            Ei vielä yhteydenottoja / No submissions yet
+                            {t("submissions.no_submissions")}
                         </div>
                     ) : (
                         submissions.map((submission) => (
                             <div key={submission.id} className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 space-y-4">
                                 <div className="flex items-center justify-between">
                                     <span className="text-xs text-gray-500 font-medium">
-                                        {new Date(submission.createdAt).toLocaleDateString("fi-FI", {
+                                        {new Date(submission.createdAt).toLocaleDateString(i18n.language, {
                                             day: "numeric",
                                             month: "short",
                                             hour: "2-digit",
@@ -122,7 +127,7 @@ export default function Submissions({ loaderData }: Route.ComponentProps) {
                                         "px-2 py-1 rounded-full text-xs font-bold uppercase",
                                         TYPE_COLORS[submission.type] || "bg-gray-100 text-gray-700"
                                     )}>
-                                        {submission.type}
+                                        {t(`contact.types.${submission.type}.title`, { defaultValue: submission.type })}
                                     </span>
                                 </div>
 
@@ -130,7 +135,7 @@ export default function Submissions({ loaderData }: Route.ComponentProps) {
                                     <h3 className="font-bold text-gray-900 dark:text-white">{submission.name}</h3>
                                     <p className="text-sm text-gray-500">{submission.email}</p>
                                     {submission.apartmentNumber && (
-                                        <p className="text-xs text-gray-400 mt-0.5">Asunto: {submission.apartmentNumber}</p>
+                                        <p className="text-xs text-gray-400 mt-0.5">{t("submissions.apartment")}: {submission.apartmentNumber}</p>
                                     )}
                                 </div>
 
@@ -153,7 +158,7 @@ export default function Submissions({ loaderData }: Route.ComponentProps) {
                                         >
                                             {SUBMISSION_STATUSES.map((status) => (
                                                 <option key={status} value={status}>
-                                                    {status.split(" / ")[0]}
+                                                    {getStatusLabel(status)}
                                                 </option>
                                             ))}
                                         </select>
@@ -161,7 +166,7 @@ export default function Submissions({ loaderData }: Route.ComponentProps) {
 
                                     {canDelete && (
                                         <Form method="post" onSubmit={(e) => {
-                                            if (!confirm("Haluatko varmasti poistaa tämän yhteydenoton? / Are you sure you want to delete this submission?")) {
+                                            if (!confirm(t("submissions.delete_confirm"))) {
                                                 e.preventDefault();
                                             }
                                         }}>
@@ -170,8 +175,9 @@ export default function Submissions({ loaderData }: Route.ComponentProps) {
                                             <button
                                                 type="submit"
                                                 className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                                                title={t("settings.common.delete")}
                                             >
-                                                <span className="material-symbols-outlined">delete</span>
+                                                <span className="material-symbols-outlined text-xl">delete</span>
                                             </button>
                                         </Form>
                                     )}
@@ -188,19 +194,19 @@ export default function Submissions({ loaderData }: Route.ComponentProps) {
                             <thead className="bg-gray-50 dark:bg-gray-900">
                                 <tr>
                                     <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-500">
-                                        Aika
+                                        {t("submissions.table.time")}
                                     </th>
                                     <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-500">
-                                        Tyyppi
+                                        {t("submissions.table.type")}
                                     </th>
                                     <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-500">
-                                        Lähettäjä
+                                        {t("submissions.table.sender")}
                                     </th>
                                     <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-500">
-                                        Viesti
+                                        {t("submissions.table.message")}
                                     </th>
                                     <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-500">
-                                        Tila
+                                        {t("submissions.table.status")}
                                     </th>
                                 </tr>
                             </thead>
@@ -208,7 +214,7 @@ export default function Submissions({ loaderData }: Route.ComponentProps) {
                                 {submissions.length === 0 ? (
                                     <tr>
                                         <td colSpan={5} className="px-4 py-12 text-center text-gray-500">
-                                            Ei vielä yhteydenottoja / No submissions yet
+                                            {t("submissions.no_submissions")}
                                         </td>
                                     </tr>
                                 ) : (
@@ -226,12 +232,19 @@ export default function Submissions({ loaderData }: Route.ComponentProps) {
 }
 
 function SubmissionRow({ submission, canDelete }: { submission: Submission; canDelete?: boolean }) {
-    const formattedDate = new Date(submission.createdAt).toLocaleDateString("fi-FI", {
+    const { t, i18n } = useTranslation();
+    const formattedDate = new Date(submission.createdAt).toLocaleDateString(i18n.language, {
         day: "numeric",
         month: "short",
         hour: "2-digit",
         minute: "2-digit",
     });
+
+    const getStatusLabel = (status: string) => {
+        if (!status) return status;
+        const parts = status.split(" / ");
+        return i18n.language === "fi" ? parts[0] : (parts[1] || parts[0]);
+    };
 
     return (
         <tr className="hover:bg-gray-50 dark:hover:bg-gray-900/50 transition-colors">
@@ -243,14 +256,14 @@ function SubmissionRow({ submission, canDelete }: { submission: Submission; canD
                     "px-2 py-1 rounded-full text-xs font-bold uppercase",
                     TYPE_COLORS[submission.type] || "bg-gray-100 text-gray-700"
                 )}>
-                    {submission.type}
+                    {t(`contact.types.${submission.type}.title`, { defaultValue: submission.type })}
                 </span>
             </td>
             <td className="px-4 py-4">
                 <p className="font-medium text-gray-900 dark:text-white">{submission.name}</p>
                 <p className="text-sm text-gray-500">{submission.email}</p>
                 {submission.apartmentNumber && (
-                    <p className="text-xs text-gray-400">Asunto: {submission.apartmentNumber}</p>
+                    <p className="text-xs text-gray-400">{t("submissions.apartment")}: {submission.apartmentNumber}</p>
                 )}
             </td>
             <td className="px-4 py-4 max-w-md">
@@ -274,14 +287,14 @@ function SubmissionRow({ submission, canDelete }: { submission: Submission; canD
                         >
                             {SUBMISSION_STATUSES.map((status) => (
                                 <option key={status} value={status}>
-                                    {status}
+                                    {getStatusLabel(status)}
                                 </option>
                             ))}
                         </select>
                     </Form>
                     {canDelete && (
                         <Form method="post" onSubmit={(e) => {
-                            if (!confirm("Haluatko varmasti poistaa tämän yhteydenoton? / Are you sure you want to delete this submission?")) {
+                            if (!confirm(t("submissions.delete_confirm"))) {
                                 e.preventDefault();
                             }
                         }}>
@@ -290,7 +303,7 @@ function SubmissionRow({ submission, canDelete }: { submission: Submission; canD
                             <button
                                 type="submit"
                                 className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
-                                title="Poista / Delete"
+                                title={t("settings.common.delete")}
                             >
                                 <span className="material-symbols-outlined text-xl">delete</span>
                             </button>

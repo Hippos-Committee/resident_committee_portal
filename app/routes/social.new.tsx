@@ -8,6 +8,7 @@ import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { Label } from "~/components/ui/label";
 import { Checkbox } from "~/components/ui/checkbox";
+import { useTranslation } from "react-i18next";
 
 export function meta({ data }: Route.MetaArgs) {
     return [
@@ -43,30 +44,31 @@ export async function action({ request }: Route.ActionArgs) {
 
 // Common Material icons for social media
 const COMMON_ICONS = [
-    { icon: "send", label: "Telegram" },
-    { icon: "photo_camera", label: "Instagram" },
-    { icon: "thumb_up", label: "Facebook" },
-    { icon: "public", label: "Website" },
-    { icon: "mail", label: "Email" },
-    { icon: "chat", label: "Discord" },
-    { icon: "videocam", label: "YouTube" },
-    { icon: "link", label: "Link" },
+    { icon: "send", labelKey: "telegram" },
+    { icon: "photo_camera", labelKey: "instagram" },
+    { icon: "thumb_up", labelKey: "facebook" },
+    { icon: "public", labelKey: "website" },
+    { icon: "mail", labelKey: "email" },
+    { icon: "chat", labelKey: "discord" },
+    { icon: "videocam", labelKey: "youtube" },
+    { icon: "link", labelKey: "link" },
 ];
 
 // Common color presets
 const COLOR_PRESETS = [
-    { value: "bg-blue-500", label: "Sininen / Blue" },
-    { value: "bg-blue-700", label: "Tummansininen / Dark Blue" },
-    { value: "bg-pink-600", label: "Pinkki / Pink" },
-    { value: "bg-purple-600", label: "Violetti / Purple" },
-    { value: "bg-red-600", label: "Punainen / Red" },
-    { value: "bg-green-600", label: "Vihreä / Green" },
-    { value: "bg-orange-500", label: "Oranssi / Orange" },
-    { value: "bg-gray-700", label: "Harmaa / Gray" },
+    { value: "bg-blue-500", labelKey: "blue" },
+    { value: "bg-blue-700", labelKey: "dark_blue" },
+    { value: "bg-pink-600", labelKey: "pink" },
+    { value: "bg-purple-600", labelKey: "purple" },
+    { value: "bg-red-600", labelKey: "red" },
+    { value: "bg-green-600", labelKey: "green" },
+    { value: "bg-orange-500", labelKey: "orange" },
+    { value: "bg-gray-700", labelKey: "gray" },
 ];
 
 export default function SocialNew({ loaderData }: Route.ComponentProps) {
     const navigate = useNavigate();
+    const { t } = useTranslation();
 
     return (
         <PageWrapper>
@@ -81,9 +83,8 @@ export default function SocialNew({ loaderData }: Route.ComponentProps) {
                     </button>
                     <div>
                         <h1 className="text-3xl md:text-4xl font-black text-gray-900 dark:text-white">
-                            Uusi some-kanava
+                            {t("social.new.header")}
                         </h1>
-                        <p className="text-lg text-gray-500">New Social Channel</p>
                     </div>
                 </div>
 
@@ -92,7 +93,7 @@ export default function SocialNew({ loaderData }: Route.ComponentProps) {
                     <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-200 dark:border-gray-700 space-y-6">
                         {/* Name */}
                         <div className="space-y-2">
-                            <Label htmlFor="name">Nimi / Name *</Label>
+                            <Label htmlFor="name">{t("social.form.name")} *</Label>
                             <Input
                                 id="name"
                                 name="name"
@@ -103,7 +104,7 @@ export default function SocialNew({ loaderData }: Route.ComponentProps) {
 
                         {/* URL */}
                         <div className="space-y-2">
-                            <Label htmlFor="url">URL *</Label>
+                            <Label htmlFor="url">{t("social.form.url")} *</Label>
                             <Input
                                 id="url"
                                 name="url"
@@ -115,7 +116,7 @@ export default function SocialNew({ loaderData }: Route.ComponentProps) {
 
                         {/* Icon */}
                         <div className="space-y-2">
-                            <Label htmlFor="icon">Ikoni / Icon *</Label>
+                            <Label htmlFor="icon">{t("social.form.icon")} *</Label>
                             <Input
                                 id="icon"
                                 name="icon"
@@ -123,7 +124,7 @@ export default function SocialNew({ loaderData }: Route.ComponentProps) {
                                 placeholder="send"
                             />
                             <div className="flex flex-wrap gap-2 mt-2">
-                                {COMMON_ICONS.map(({ icon, label }) => (
+                                {COMMON_ICONS.map(({ icon, labelKey }) => (
                                     <button
                                         key={icon}
                                         type="button"
@@ -132,10 +133,10 @@ export default function SocialNew({ loaderData }: Route.ComponentProps) {
                                             if (input) input.value = icon;
                                         }}
                                         className="flex items-center gap-1 px-2 py-1 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors text-sm"
-                                        title={label}
+                                        title={t(`social.icons.${labelKey}`)}
                                     >
                                         <span className="material-symbols-outlined text-lg">{icon}</span>
-                                        <span className="text-xs text-gray-500">{label}</span>
+                                        <span className="text-xs text-gray-500">{t(`social.icons.${labelKey}`)}</span>
                                     </button>
                                 ))}
                             </div>
@@ -143,22 +144,22 @@ export default function SocialNew({ loaderData }: Route.ComponentProps) {
 
                         {/* Color */}
                         <div className="space-y-2">
-                            <Label htmlFor="color">Väri / Color</Label>
+                            <Label htmlFor="color">{t("social.form.color")}</Label>
                             <select
                                 id="color"
                                 name="color"
                                 defaultValue="bg-blue-500"
                                 className="w-full h-10 px-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800"
                             >
-                                {COLOR_PRESETS.map(({ value, label }) => (
-                                    <option key={value} value={value}>{label}</option>
+                                {COLOR_PRESETS.map(({ value, labelKey }) => (
+                                    <option key={value} value={value}>{t(`social.colors.${labelKey}`)}</option>
                                 ))}
                             </select>
                         </div>
 
                         {/* Sort Order */}
                         <div className="space-y-2">
-                            <Label htmlFor="sortOrder">Järjestys / Sort Order</Label>
+                            <Label htmlFor="sortOrder">{t("social.form.sort_order")}</Label>
                             <Input
                                 id="sortOrder"
                                 name="sortOrder"
@@ -167,7 +168,7 @@ export default function SocialNew({ loaderData }: Route.ComponentProps) {
                                 placeholder="0"
                             />
                             <p className="text-xs text-gray-500">
-                                Pienemmät numerot näkyvät ensin / Lower numbers appear first
+                                {t("social.new.sort_desc")}
                             </p>
                         </div>
 
@@ -175,9 +176,9 @@ export default function SocialNew({ loaderData }: Route.ComponentProps) {
                         <div className="flex items-center gap-3">
                             <Checkbox id="isActive" name="isActive" defaultChecked />
                             <Label htmlFor="isActive">
-                                Aktiivinen / Active
+                                {t("social.form.active")}
                                 <span className="text-xs text-gray-500 block">
-                                    Piilotetut kanavat näkyvät vain henkilökunnalle / Hidden channels only visible to staff
+                                    {t("social.new.hidden_desc")}
                                 </span>
                             </Label>
                         </div>
@@ -186,11 +187,11 @@ export default function SocialNew({ loaderData }: Route.ComponentProps) {
                     {/* Actions */}
                     <div className="flex gap-4">
                         <Button type="button" variant="outline" onClick={() => navigate("/social")}>
-                            Peruuta / Cancel
+                            {t("settings.common.cancel")}
                         </Button>
                         <Button type="submit">
                             <span className="material-symbols-outlined mr-2">add</span>
-                            Lisää / Add
+                            {t("social.add_link")}
                         </Button>
                     </div>
                 </Form>

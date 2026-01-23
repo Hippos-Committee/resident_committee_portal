@@ -10,14 +10,17 @@ import {
 
 import type { Route } from "./+types/root";
 import "./app.css";
-import { getAuthenticatedUser, getGuestPermissions } from "~/lib/auth.server";
+import { getAuthenticatedUser, getGuestContext } from "~/lib/auth.server";
 import { SITE_CONFIG } from "~/lib/config.server";
 import { getDatabase } from "~/db";
 import { cn } from "~/lib/utils";
 import type { ClientUser } from "~/contexts/user-context";
+import i18next from "~/i18next.server";
 
 export async function loader({ request }: Route.LoaderArgs) {
   const authUser = await getAuthenticatedUser(request, getDatabase);
+
+  let locale = await i18next.getLocale(request);
 
   let user: ClientUser | null;
 
@@ -30,10 +33,12 @@ export async function loader({ request }: Route.LoaderArgs) {
       roleName: authUser.roleName || "Unknown",
       roleId: authUser.roleId,
       permissions: authUser.permissions,
+      primaryLanguage: authUser.primaryLanguage,
+      secondaryLanguage: authUser.secondaryLanguage,
     };
   } else {
-    // Guest user - get Guest role permissions for navbar visibility
-    const guestPermissions = await getGuestPermissions(() => getDatabase());
+    // Guest user - get Guest role permissions and default languages
+    const { permissions: guestPermissions, languages } = await getGuestContext(() => getDatabase());
     user = {
       userId: "guest",
       email: "",
@@ -41,14 +46,25 @@ export async function loader({ request }: Route.LoaderArgs) {
       roleName: "Guest",
       roleId: "guest",
       permissions: guestPermissions,
+      primaryLanguage: languages.primary,
+      secondaryLanguage: languages.secondary,
     };
   }
 
   return {
     user,
     siteConfig: SITE_CONFIG,
+    locale,
   };
 }
+
+export const handle = {
+  // In the handle export, we can add a i18n key with namespaces our route
+  // will need to load. This key can be a single string or an array of strings.
+  // TIP: In most cases, you should set this to your defaultNS from your i18n config
+  // or if you did not set one, set it to the i18next default namespace "translation"
+  i18n: "common",
+};
 
 export const links: Route.LinksFunction = () => [
   { rel: "preconnect", href: "https://fonts.googleapis.com" },
@@ -68,8 +84,10 @@ export const links: Route.LinksFunction = () => [
 ];
 
 export function Layout({ children }: { children: React.ReactNode }) {
+  const loaderData = useLoaderData<typeof loader>();
+  const locale = loaderData?.locale ?? "en";
   return (
-    <html lang="en">
+    <html lang={locale}>
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -108,8 +126,23 @@ function ContentFader({ children }: { children: React.ReactNode }) {
   );
 }
 
+import { useTranslation } from "react-i18next";
+import { useEffect } from "react";
+
+// ... existing imports
+
 export default function App() {
-  const { user, siteConfig } = useLoaderData<typeof loader>();
+  const { user, siteConfig, locale } = useLoaderData<typeof loader>();
+  const { i18n } = useTranslation();
+
+  // Sync locale from loader to i18next
+  // Sync locale from loader to i18next
+  // Removed to prevent overwriting client-side language selection
+  // useEffect(() => {
+  //   if (locale && i18n.language !== locale) {
+  //     i18n.changeLanguage(locale);
+  //   }
+  // }, [locale, i18n]);
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -129,6 +162,7 @@ export default function App() {
 
 function AppContent({ siteConfig }: { siteConfig: typeof SITE_CONFIG }) {
   const { language, isInfoReel } = useLanguage();
+  const { t } = useTranslation();
 
   return (
     <div className="flex flex-col h-full bg-background text-foreground overflow-hidden">
@@ -139,16 +173,20 @@ function AppContent({ siteConfig }: { siteConfig: typeof SITE_CONFIG }) {
               {siteConfig.shortName || siteConfig.name}
             </span>
             <div className="flex flex-col items-start justify-center h-full text-gray-900 dark:text-white uppercase font-black tracking-widest leading-[0.85] border-l-2 md:border-l-4 border-primary pl-3 sm:pl-4 md:pl-10 py-1 md:py-2">
-              {(language === "fi" || isInfoReel) && (
-                <span className="text-sm sm:text-2xl md:text-3xl">Asukastoimikunta</span>
+              {/* Info Reel: Show FI and EN */}
+              {isInfoReel && (
+                <>
+                  <span className="text-sm sm:text-2xl md:text-3xl">{t("app.title", { lng: "fi" })}</span>
+                  <span className="opacity-90 text-[9px] sm:text-xl md:text-2xl mt-0.5 md:mt-2">
+                    {t("app.title", { lng: "en" })}
+                  </span>
+                </>
               )}
-              {(language === "en" || isInfoReel) && (
-                <span className={cn(
-                  "opacity-90",
-                  // In InfoReel (both visible), make English smaller. In single language mode, make it main size.
-                  isInfoReel ? "text-[9px] sm:text-xl md:text-2xl mt-0.5 md:mt-2" : "text-sm sm:text-2xl md:text-3xl"
-                )}>
-                  Tenant Committee
+
+              {/* Normal Mode: Show current language */}
+              {!isInfoReel && (
+                <span className="text-sm sm:text-2xl md:text-3xl">
+                  {t("app.title")}
                 </span>
               )}
             </div>

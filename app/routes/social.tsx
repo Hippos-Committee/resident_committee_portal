@@ -4,7 +4,7 @@ import { PageWrapper, SplitLayout, QRPanel, ContentArea } from "~/components/lay
 import { useLocalReel } from "~/contexts/info-reel-context";
 import { SITE_CONFIG } from "~/lib/config.server";
 import { getDatabase, type SocialLink, type NewSocialLink } from "~/db";
-import { requirePermission, getAuthenticatedUser, getGuestPermissions } from "~/lib/auth.server";
+import { requirePermission, getAuthenticatedUser, getGuestContext } from "~/lib/auth.server";
 import { Form, Link } from "react-router";
 import { useState } from "react";
 import { useUser } from "~/contexts/user-context";
@@ -12,6 +12,7 @@ import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { Label } from "~/components/ui/label";
 import { Checkbox } from "~/components/ui/checkbox";
+import { useTranslation } from "react-i18next";
 
 export function meta({ data }: Route.MetaArgs) {
     return [
@@ -23,9 +24,21 @@ export function meta({ data }: Route.MetaArgs) {
 export async function loader({ request }: Route.LoaderArgs) {
     // Check permission (works for both logged-in users and guests)
     const authUser = await getAuthenticatedUser(request, getDatabase);
-    const permissions = authUser
-        ? authUser.permissions
-        : await getGuestPermissions(() => getDatabase());
+
+    let permissions: string[];
+    let languages: { primary: string; secondary: string };
+
+    if (authUser) {
+        permissions = authUser.permissions;
+        languages = {
+            primary: authUser.primaryLanguage,
+            secondary: authUser.secondaryLanguage
+        };
+    } else {
+        const guestContext = await getGuestContext(() => getDatabase());
+        permissions = guestContext.permissions;
+        languages = guestContext.languages;
+    }
 
     const canRead = permissions.some(p => p === "social:read" || p === "*");
     if (!canRead) {
@@ -43,6 +56,7 @@ export async function loader({ request }: Route.LoaderArgs) {
         siteConfig: SITE_CONFIG,
         channels: activeLinks,
         allLinks: sortedLinks,
+        languages,
     };
 }
 
@@ -73,11 +87,15 @@ export async function action({ request }: Route.ActionArgs) {
 }
 
 export default function Social({ loaderData }: Route.ComponentProps) {
-    const { channels, allLinks } = loaderData;
+    const { channels, allLinks, languages } = loaderData;
+    const { t, i18n } = useTranslation();
     const { hasPermission } = useUser();
     const canWrite = hasPermission("social:write");
 
     const [editingId, setEditingId] = useState<string | null>(null);
+
+    // Determine which language to show as secondary (small text)
+    const secondaryDisplayLang = i18n.language === languages.secondary ? languages.primary : languages.secondary;
 
     // Use local reel for cycling through channels in info reel mode
     const { activeIndex, activeItem: activeChannel, isInfoReel, itemFillProgress, itemOpacity } = useLocalReel({
@@ -115,7 +133,7 @@ export default function Social({ loaderData }: Route.ComponentProps) {
             <Link
                 to="/social/new"
                 className="p-2 text-gray-500 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"
-                title="Lisää / Add"
+                title={`${t("social.add_link")} / Add`}
             >
                 <span className="material-symbols-outlined text-xl">add</span>
             </Link>
@@ -126,7 +144,10 @@ export default function Social({ loaderData }: Route.ComponentProps) {
         <PageWrapper>
             <SplitLayout
                 right={RightContent}
-                header={{ finnish: "Sosiaalinen Media", english: "Social Media" }}
+                header={{
+                    primary: t("social.header"),
+                    secondary: t("social.header", { lng: secondaryDisplayLang })
+                }}
                 footer={FooterContent}
             >
                 <ContentArea className="space-y-2">
@@ -143,37 +164,37 @@ export default function Social({ loaderData }: Route.ComponentProps) {
                                         <input type="hidden" name="id" value={channel.id} />
                                         <div className="grid grid-cols-2 gap-3">
                                             <div>
-                                                <Label className="text-xs">Nimi</Label>
+                                                <Label className="text-xs">{t("social.form.name")}</Label>
                                                 <Input name="name" required defaultValue={channel.name} className="h-8" />
                                             </div>
                                             <div>
-                                                <Label className="text-xs">Ikoni</Label>
+                                                <Label className="text-xs">{t("social.form.icon")}</Label>
                                                 <Input name="icon" required defaultValue={channel.icon} className="h-8" />
                                             </div>
                                         </div>
                                         <div>
-                                            <Label className="text-xs">URL</Label>
+                                            <Label className="text-xs">{t("social.form.url")}</Label>
                                             <Input name="url" type="url" required defaultValue={channel.url} className="h-8" />
                                         </div>
                                         <div className="grid grid-cols-2 gap-3">
                                             <div>
-                                                <Label className="text-xs">Väri</Label>
+                                                <Label className="text-xs">{t("social.form.color")}</Label>
                                                 <Input name="color" defaultValue={channel.color} className="h-8" />
                                             </div>
                                             <div>
-                                                <Label className="text-xs">Järjestys</Label>
+                                                <Label className="text-xs">{t("social.form.sort_order")}</Label>
                                                 <Input name="sortOrder" type="number" defaultValue={channel.sortOrder} className="h-8" />
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-2">
                                             <Checkbox id={`edit-isActive-${channel.id}`} name="isActive" defaultChecked={channel.isActive} />
-                                            <Label htmlFor={`edit-isActive-${channel.id}`} className="text-xs">Aktiivinen</Label>
+                                            <Label htmlFor={`edit-isActive-${channel.id}`} className="text-xs">{t("social.form.active")}</Label>
                                         </div>
                                         <div className="flex gap-2">
                                             <Button type="button" variant="outline" size="sm" onClick={() => setEditingId(null)}>
-                                                Peruuta
+                                                {t("settings.common.cancel")}
                                             </Button>
-                                            <Button type="submit" size="sm">Tallenna</Button>
+                                            <Button type="submit" size="sm">{t("settings.common.save")}</Button>
                                         </div>
                                     </Form>
                                 </div>
@@ -230,7 +251,7 @@ export default function Social({ loaderData }: Route.ComponentProps) {
                                             {channel.name}
                                         </h3>
                                         {!channel.isActive && canWrite && (
-                                            <span className="text-xs text-gray-400">(piilotettu)</span>
+                                            <span className="text-xs text-gray-400">{t("social.hidden")}</span>
                                         )}
                                     </div>
                                     <span
@@ -257,7 +278,7 @@ export default function Social({ loaderData }: Route.ComponentProps) {
                                             <span className="material-symbols-outlined text-xl">edit</span>
                                         </button>
                                         <Form method="post" className="inline" onSubmit={(e) => {
-                                            if (!confirm("Poista? / Delete?")) e.preventDefault();
+                                            if (!confirm(t("social.delete_confirm"))) e.preventDefault();
                                         }}>
                                             <input type="hidden" name="_action" value="delete" />
                                             <input type="hidden" name="id" value={channel.id} />
@@ -277,12 +298,12 @@ export default function Social({ loaderData }: Route.ComponentProps) {
                     {displayLinks.length === 0 && (
                         <div className="text-center py-12 text-gray-400">
                             <span className="material-symbols-outlined text-5xl mb-4 block opacity-50">share</span>
-                            <p className="font-medium">Ei sosiaalisia kanavia / No social channels</p>
+                            <p className="font-medium">{t("social.no_channels")}</p>
                             {canWrite && (
                                 <Link to="/social/new">
                                     <Button className="mt-4">
                                         <span className="material-symbols-outlined mr-2">add</span>
-                                        Lisää ensimmäinen / Add first
+                                        {t("social.add_first")}
                                     </Button>
                                 </Link>
                             )}

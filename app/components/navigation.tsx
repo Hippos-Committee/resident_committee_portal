@@ -1,9 +1,10 @@
-import { Link, useLocation } from "react-router";
+import { Link, useLocation, useFetcher } from "react-router";
 import { useState } from "react";
 import { cn } from "~/lib/utils";
 import { useInfoReel } from "~/contexts/info-reel-context";
 import { useUser } from "~/contexts/user-context";
 import { useLanguage } from "~/contexts/language-context";
+import { useTranslation } from "react-i18next";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -33,24 +34,62 @@ interface NavigationProps {
     orientation?: "vertical" | "horizontal";
 }
 
+import i18nConfig from "~/i18n";
+
 export function Navigation({ className, orientation = "vertical" }: NavigationProps) {
     const location = useLocation();
     const pathname = location.pathname;
     const { isInfoReel, fillProgress, opacity } = useInfoReel();
     const { user, hasPermission, hasAnyPermission } = useUser();
-    const { language, setLanguage, isInfoReel: contextIsInfoReel } = useLanguage();
+    // Only use isInfoReel from context, we'll manage language directly via i18next
+    const { isInfoReel: contextIsInfoReel } = useLanguage();
     // Use isInfoReel from language context to ensure consistency, though they should be same
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+    const { t, i18n } = useTranslation();
+    const fetcher = useFetcher();
 
-    const toggleLanguage = () => {
-        setLanguage(language === "fi" ? "en" : "fi");
+    const currentLanguage = i18n.language;
+
+    // Resolve labels
+    const getLabel = (key: string) => {
+        if (isInfoReel) {
+            return t(key, { lng: 'fi' });
+        }
+        return t(key);
     };
+
+    const getSubLabel = (key: string) => {
+        if (isInfoReel) {
+            return t(key, { lng: 'en' });
+        }
+        // In normal mode, we don't really use sublabel in the same way, but let's return English as fallback or empty
+        return "";
+    };
+
+    const changeLanguage = (lang: string) => {
+        // Immediate client-side update for responsiveness
+        i18n.changeLanguage(lang);
+
+        // If logged in, update profile via API
+        if (user && user.userId !== "guest") {
+            fetcher.submit(
+                { language: lang },
+                { method: "post", action: "/api/set-language" }
+            );
+        } else {
+            // For guests, we still want to persist via cookie using the API
+            fetcher.submit(
+                { language: lang },
+                { method: "post", action: "/api/set-language" }
+            );
+        }
+    }
 
     // Check if profile menu should be shown (user is logged in, not guest)
     const showProfileMenu = user && user.userId !== "guest";
 
     // Check if settings menu should be shown (has any admin permissions)
-    const showSettingsMenu = !isInfoReel && hasAnyPermission(["settings:users", "settings:roles", "settings:reimbursements"]);
+    const showSettingsMenu = !isInfoReel && hasAnyPermission(["settings:users", "settings:roles", "settings:reimbursements", "settings:general"]);
 
     // Use shared nav items configuration
     const allNavItems = NAV_ITEMS;
@@ -83,6 +122,12 @@ export function Navigation({ className, orientation = "vertical" }: NavigationPr
     const renderNavItem = (item: typeof navItems[0], isMobile = false) => {
         const isActive = pathname === item.path;
         const isAnimating = isActive && isInfoReel;
+
+        // Resolve labels
+        // If InfoReel: Primary = FI, Secondary = EN
+        // If Normal: Primary = Current Language
+        const primaryLabel = isInfoReel ? t(item.i18nKey, { lng: 'fi' }) : t(item.i18nKey);
+        const secondaryLabel = t(item.i18nKey, { lng: 'en' });
 
         return (
             <Link
@@ -119,10 +164,10 @@ export function Navigation({ className, orientation = "vertical" }: NavigationPr
                 {isMobile && (
                     <div className="relative flex flex-col items-start leading-none">
                         <span className="text-sm font-bold">
-                            {(language === "fi" || isInfoReel) ? item.label : item.subLabel}
+                            {primaryLabel}
                         </span>
                         {isInfoReel && (
-                            <span className="text-xs opacity-60 font-medium">{item.subLabel}</span>
+                            <span className="text-xs opacity-60 font-medium">{secondaryLabel}</span>
                         )}
                     </div>
                 )}
@@ -134,11 +179,15 @@ export function Navigation({ className, orientation = "vertical" }: NavigationPr
     const currentNavItem = navItems.find(item => item.path === pathname) ||
         allNavItems.find(item => item.path === pathname);
     const isHomePage = pathname === "/";
+
+    // Mobile menu label - originally showed "FI / EN" format
+    // Refactoring to use translation keys
     const mobileMenuLabel = isHomePage
-        ? "Valikko / Menu"
+        ? `${t("nav.menu", { lng: 'fi' })} / ${t("nav.menu", { lng: 'en' })}`
         : currentNavItem
-            ? `${currentNavItem.label} / ${currentNavItem.subLabel}`
-            : "Valikko / Menu";
+            ? `${t(currentNavItem.i18nKey, { lng: 'fi' })} / ${t(currentNavItem.i18nKey, { lng: 'en' })}`
+            : `${t("nav.menu", { lng: 'fi' })} / ${t("nav.menu", { lng: 'en' })}`
+
     const mobileMenuIcon = isHomePage
         ? "menu"
         : currentNavItem?.icon || "menu";
@@ -164,26 +213,44 @@ export function Navigation({ className, orientation = "vertical" }: NavigationPr
                                 <span className="sr-only">Close</span>
                             </SheetClose>
                             <SheetTitle className="text-left text-lg font-black">
-                                {language === "fi" ? "Navigointi" : "Navigation"}
+                                {t("nav.navigation")}
                             </SheetTitle>
                         </SheetHeader>
                         <nav className="flex flex-col gap-1 mt-4 overflow-y-auto min-h-0 flex-1 pb-8">
                             {/* Language Switcher Mobile */}
                             {!isInfoReel && (
-                                <button
-                                    onClick={toggleLanguage}
-                                    className="flex items-center gap-3 px-4 py-3 rounded-xl transition-all hover:bg-primary/10 hover:text-primary text-gray-500 dark:text-gray-400"
-                                >
-                                    <span className="material-symbols-outlined text-2xl">translate</span>
-                                    <div className="flex flex-col items-start leading-none">
-                                        <span className="text-sm font-bold">
-                                            {language === "fi" ? "Suomi" : "English"}
-                                        </span>
-                                        <span className="text-xs opacity-60 font-medium">
-                                            {language === "fi" ? "Kieli / Language" : "Language / Kieli"}
-                                        </span>
-                                    </div>
-                                </button>
+                                <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                        <button
+                                            className="flex items-center gap-3 px-4 py-3 rounded-xl transition-all hover:bg-primary/10 hover:text-primary text-gray-500 dark:text-gray-400 w-full text-left"
+                                        >
+                                            <span className="material-symbols-outlined text-2xl">translate</span>
+                                            <div className="flex flex-col items-start leading-none">
+                                                <span className="text-sm font-bold">
+                                                    {t("lang.name")}
+                                                </span>
+                                                <span className="text-xs opacity-60 font-medium">
+                                                    {t("lang.label")}
+                                                </span>
+                                            </div>
+                                            <span className="material-symbols-outlined text-lg opacity-60 ml-auto">expand_more</span>
+                                        </button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="start" className="w-56">
+                                        {i18nConfig.supportedLngs.map((lang) => (
+                                            <DropdownMenuItem
+                                                key={lang}
+                                                onClick={() => changeLanguage(lang)}
+                                                className={cn("cursor-pointer flex items-center justify-between", currentLanguage === lang && "bg-secondary")}
+                                            >
+                                                <span>{lang === "fi" ? "Suomi" : lang === "sv" ? "Svenska" : "English"}</span>
+                                                {currentLanguage === lang && (
+                                                    <span className="material-symbols-outlined text-sm">check</span>
+                                                )}
+                                            </DropdownMenuItem>
+                                        ))}
+                                    </DropdownMenuContent>
+                                </DropdownMenu>
                             )}
 
                             {navItems.map((item) => renderNavItem(item, true))}
@@ -192,8 +259,24 @@ export function Navigation({ className, orientation = "vertical" }: NavigationPr
                             {showSettingsMenu && (
                                 <div className="mt-4 pt-4 border-t border-border">
                                     <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2 px-4">
-                                        {language === "fi" ? "Asetukset" : "Settings"}
+                                        {t("nav.settings")}
                                     </p>
+                                    {hasPermission("settings:general") && (
+                                        <Link
+                                            to="/settings/general"
+                                            onClick={() => setMobileMenuOpen(false)}
+                                            className={cn(
+                                                "flex items-center gap-3 px-4 py-3 rounded-xl transition-all",
+                                                "hover:bg-primary/10 hover:text-primary",
+                                                pathname === "/settings/general" ? "text-primary bg-primary/10" : "text-gray-500 dark:text-gray-400"
+                                            )}
+                                        >
+                                            <span className="material-symbols-outlined text-2xl">settings</span>
+                                            <span className="text-sm font-bold">
+                                                {t("settings.general.title")}
+                                            </span>
+                                        </Link>
+                                    )}
                                     {hasPermission("settings:users") && (
                                         <Link
                                             to="/settings/users"
@@ -206,7 +289,7 @@ export function Navigation({ className, orientation = "vertical" }: NavigationPr
                                         >
                                             <span className="material-symbols-outlined text-2xl">manage_accounts</span>
                                             <span className="text-sm font-bold">
-                                                {language === "fi" ? "Käyttäjät" : "Users"}
+                                                {t("nav.users")}
                                             </span>
                                         </Link>
                                     )}
@@ -222,7 +305,7 @@ export function Navigation({ className, orientation = "vertical" }: NavigationPr
                                         >
                                             <span className="material-symbols-outlined text-2xl">shield_person</span>
                                             <span className="text-sm font-bold">
-                                                {language === "fi" ? "Roolit" : "Roles"}
+                                                {t("nav.roles")}
                                             </span>
                                         </Link>
                                     )}
@@ -238,7 +321,7 @@ export function Navigation({ className, orientation = "vertical" }: NavigationPr
                                         >
                                             <span className="material-symbols-outlined text-2xl">smart_toy</span>
                                             <span className="text-sm font-bold">
-                                                {language === "fi" ? "Korvaukset" : "Reimbursements"}
+                                                {t("nav.reimbursements")}
                                             </span>
                                         </Link>
                                     )}
@@ -249,7 +332,7 @@ export function Navigation({ className, orientation = "vertical" }: NavigationPr
                             {showProfileMenu && !isInfoReel && (
                                 <div className="mt-4 pt-4 border-t border-border">
                                     <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2 px-4">
-                                        {language === "fi" ? "Profiili" : "Profile"}
+                                        {t("nav.profile")}
                                     </p>
                                     <Link
                                         to="/profile"
@@ -262,7 +345,7 @@ export function Navigation({ className, orientation = "vertical" }: NavigationPr
                                     >
                                         <span className="material-symbols-outlined text-2xl">edit</span>
                                         <span className="text-sm font-bold">
-                                            {language === "fi" ? "Muokkaa profiilia" : "Edit profile"}
+                                            {t("nav.edit_profile")}
                                         </span>
                                     </Link>
                                     <Link
@@ -272,7 +355,7 @@ export function Navigation({ className, orientation = "vertical" }: NavigationPr
                                     >
                                         <span className="material-symbols-outlined text-2xl">logout</span>
                                         <span className="text-sm font-bold">
-                                            {language === "fi" ? "Kirjaudu ulos" : "Log out"}
+                                            {t("nav.log_out")}
                                         </span>
                                     </Link>
                                 </div>
@@ -291,6 +374,8 @@ export function Navigation({ className, orientation = "vertical" }: NavigationPr
                 {navItems.map((item) => {
                     const isActive = pathname === item.path;
                     const isAnimating = isActive && isInfoReel;
+                    const primaryLabel = isInfoReel ? t(item.i18nKey, { lng: 'fi' }) : t(item.i18nKey);
+                    const secondaryLabel = t(item.i18nKey, { lng: 'en' });
 
                     return (
                         <Tooltip key={item.path}>
@@ -327,10 +412,10 @@ export function Navigation({ className, orientation = "vertical" }: NavigationPr
                                         orientation === "vertical" && "lg:hidden" // Hide even on large if vertical (uses sidebar tooltips)
                                     )}>
                                         <span className="text-sm md:text-base font-bold">
-                                            {(language === "fi" || isInfoReel) ? item.label : item.subLabel}
+                                            {primaryLabel}
                                         </span>
                                         {isInfoReel && (
-                                            <span className="text-[10px] md:text-xs opacity-60 font-medium">{item.subLabel}</span>
+                                            <span className="text-[10px] md:text-xs opacity-60 font-medium">{secondaryLabel}</span>
                                         )}
                                     </div>
                                 </Link>
@@ -343,13 +428,13 @@ export function Navigation({ className, orientation = "vertical" }: NavigationPr
                                     orientation === "horizontal" && "lg:hidden"
                                 )}
                             >
-                                {(language === "fi" || isInfoReel) ? (
+                                {isInfoReel ? (
                                     <>
-                                        <span>{item.label}</span>
-                                        {isInfoReel && <span className="text-muted-foreground ml-1">/ {item.subLabel}</span>}
+                                        <span>{t(item.i18nKey, { lng: 'fi' })}</span>
+                                        <span className="text-muted-foreground ml-1">/ {t(item.i18nKey, { lng: 'en' })}</span>
                                     </>
                                 ) : (
-                                    <span>{item.subLabel}</span>
+                                    <span>{t(item.i18nKey)}</span>
                                 )}
                             </TooltipContent>
                         </Tooltip>
@@ -376,11 +461,8 @@ export function Navigation({ className, orientation = "vertical" }: NavigationPr
                                     orientation === "vertical" && "lg:hidden"
                                 )}>
                                     <span className="text-sm md:text-base font-bold">
-                                        {(language === "fi" || isInfoReel) ? "Asetukset" : "Settings"}
+                                        {t("nav.settings")}
                                     </span>
-                                    {isInfoReel && (
-                                        <span className="text-[10px] md:text-xs opacity-60 font-medium">Settings</span>
-                                    )}
                                 </div>
 
                                 {/* Dropdown indicator */}
@@ -390,15 +472,26 @@ export function Navigation({ className, orientation = "vertical" }: NavigationPr
                             </button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="w-56">
+                            {hasPermission("settings:general") && (
+                                <DropdownMenuItem asChild>
+                                    <Link to="/settings/general" className="flex items-center gap-2 cursor-pointer">
+                                        <span className="material-symbols-outlined text-lg">settings</span>
+                                        <div>
+                                            <p className="font-medium">
+                                                {t("settings.general.title")}
+                                            </p>
+                                        </div>
+                                    </Link>
+                                </DropdownMenuItem>
+                            )}
                             {hasPermission("settings:users") && (
                                 <DropdownMenuItem asChild>
                                     <Link to="/settings/users" className="flex items-center gap-2 cursor-pointer">
                                         <span className="material-symbols-outlined text-lg">manage_accounts</span>
                                         <div>
                                             <p className="font-medium">
-                                                {(language === "fi" || isInfoReel) ? "Käyttäjät" : "Users"}
+                                                {t("nav.users")}
                                             </p>
-                                            {isInfoReel && <p className="text-xs text-muted-foreground">Users</p>}
                                         </div>
                                     </Link>
                                 </DropdownMenuItem>
@@ -409,9 +502,8 @@ export function Navigation({ className, orientation = "vertical" }: NavigationPr
                                         <span className="material-symbols-outlined text-lg">shield_person</span>
                                         <div>
                                             <p className="font-medium">
-                                                {(language === "fi" || isInfoReel) ? "Roolit" : "Roles"}
+                                                {t("nav.roles")}
                                             </p>
-                                            {isInfoReel && <p className="text-xs text-muted-foreground">Roles</p>}
                                         </div>
                                     </Link>
                                 </DropdownMenuItem>
@@ -424,9 +516,8 @@ export function Navigation({ className, orientation = "vertical" }: NavigationPr
                                             <span className="material-symbols-outlined text-lg">smart_toy</span>
                                             <div>
                                                 <p className="font-medium">
-                                                    {(language === "fi" || isInfoReel) ? "Korvaukset" : "Reimbursements"}
+                                                    {t("nav.reimbursements")}
                                                 </p>
-                                                {isInfoReel && <p className="text-xs text-muted-foreground">Reimbursements</p>}
                                             </div>
                                         </Link>
                                     </DropdownMenuItem>
@@ -456,11 +547,8 @@ export function Navigation({ className, orientation = "vertical" }: NavigationPr
                                     orientation === "vertical" && "lg:hidden"
                                 )}>
                                     <span className="text-sm md:text-base font-bold">
-                                        {(language === "fi" || isInfoReel) ? "Profiili" : "Profile"}
+                                        {t("nav.profile")}
                                     </span>
-                                    {isInfoReel && (
-                                        <span className="text-[10px] md:text-xs opacity-60 font-medium">Profile</span>
-                                    )}
                                 </div>
 
                                 {/* Dropdown indicator */}
@@ -475,9 +563,8 @@ export function Navigation({ className, orientation = "vertical" }: NavigationPr
                                     <span className="material-symbols-outlined text-lg">edit</span>
                                     <div>
                                         <p className="font-medium">
-                                            {(language === "fi" || isInfoReel) ? "Muokkaa profiilia" : "Edit profile"}
+                                            {t("nav.edit_profile")}
                                         </p>
-                                        {isInfoReel && <p className="text-xs text-muted-foreground">Edit profile</p>}
                                     </div>
                                 </Link>
                             </DropdownMenuItem>
@@ -487,9 +574,8 @@ export function Navigation({ className, orientation = "vertical" }: NavigationPr
                                     <span className="material-symbols-outlined text-lg">logout</span>
                                     <div>
                                         <p className="font-medium">
-                                            {(language === "fi" || isInfoReel) ? "Kirjaudu ulos" : "Log out"}
+                                            {t("nav.log_out")}
                                         </p>
-                                        {isInfoReel && <p className="text-xs opacity-75">Log out</p>}
                                     </div>
                                 </Link>
                             </DropdownMenuItem>
@@ -499,10 +585,9 @@ export function Navigation({ className, orientation = "vertical" }: NavigationPr
 
                 {/* Language Switcher Desktop - Only show when not in info reel */}
                 {!isInfoReel && (
-                    <Tooltip>
-                        <TooltipTrigger asChild>
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
                             <button
-                                onClick={toggleLanguage}
                                 className={cn(
                                     "relative group flex items-center justify-center lg:justify-start gap-3 px-3 lg:px-4 py-2 rounded-xl transition-all duration-300 overflow-hidden",
                                     "hover:bg-primary/10 hover:text-primary cursor-pointer text-gray-500 dark:text-gray-400"
@@ -517,24 +602,33 @@ export function Navigation({ className, orientation = "vertical" }: NavigationPr
                                     orientation === "vertical" && "lg:hidden"
                                 )}>
                                     <span className="text-sm md:text-base font-bold">
-                                        {language === "fi" ? "Suomi" : "English"}
+                                        {t("lang.name")}
                                     </span>
                                     <span className="text-[10px] md:text-xs opacity-60 font-medium">
-                                        {language === "fi" ? "Kieli" : "Language"}
+                                        {t("lang.label")}
                                     </span>
                                 </div>
+                                {/* Dropdown indicator */}
+                                <span className="material-symbols-outlined text-sm opacity-60 hidden lg:block">
+                                    expand_more
+                                </span>
                             </button>
-                        </TooltipTrigger>
-                        <TooltipContent
-                            side={orientation === "vertical" ? "right" : "bottom"}
-                            className={cn(
-                                "font-bold",
-                                orientation === "horizontal" && "lg:hidden"
-                            )}
-                        >
-                            <span>{language === "fi" ? "Vaihda kieleksi englanti" : "Switch to Finnish"}</span>
-                        </TooltipContent>
-                    </Tooltip>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-56">
+                            {i18nConfig.supportedLngs.map((lang) => (
+                                <DropdownMenuItem
+                                    key={lang}
+                                    onClick={() => changeLanguage(lang)}
+                                    className={cn("cursor-pointer flex items-center justify-between", currentLanguage === lang && "bg-secondary")}
+                                >
+                                    <span>{lang === "fi" ? "Suomi" : lang === "sv" ? "Svenska" : "English"}</span>
+                                    {currentLanguage === lang && (
+                                        <span className="material-symbols-outlined text-sm">check</span>
+                                    )}
+                                </DropdownMenuItem>
+                            ))}
+                        </DropdownMenuContent>
+                    </DropdownMenu>
                 )}
             </nav>
         </TooltipProvider>

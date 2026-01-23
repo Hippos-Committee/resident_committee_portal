@@ -1,7 +1,9 @@
-import { createContext, useContext, useState, useEffect, type ReactNode } from "react";
+import { createContext, useContext, type ReactNode, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useInfoReel } from "./info-reel-context";
+import { useUser } from "./user-context";
 
-export type Language = "fi" | "en";
+export type Language = "fi" | "en" | "sv";
 
 interface BilingualText {
     finnish: string;
@@ -13,48 +15,49 @@ interface LanguageContextValue {
     setLanguage: (lang: Language) => void;
     getText: (text: BilingualText) => string | ReactNode;
     isInfoReel: boolean;
+    primaryLanguage: string;
+    secondaryLanguage: string;
 }
 
 const LanguageContext = createContext<LanguageContextValue | null>(null);
 
-const STORAGE_KEY = "hippos-portal-language";
-
 export function LanguageProvider({ children }: { children: ReactNode }) {
     const { isInfoReel } = useInfoReel();
-    const [language, setLanguageState] = useState<Language>("fi");
+    const { i18n } = useTranslation();
+    const { user } = useUser();
 
-    // Load from local storage on mount
-    useEffect(() => {
-        const stored = localStorage.getItem(STORAGE_KEY);
-        if (stored === "fi" || stored === "en") {
-            setLanguageState(stored);
-        }
-    }, []);
+    // Default to fi/en if user not loaded yet (though this provider is inside UserProvider)
+    // or if user is somehow null (shouldn't be for guest context)
+    const primaryLanguage = user?.primaryLanguage || "fi";
+    const secondaryLanguage = user?.secondaryLanguage || "en";
+
+    // Derived state from i18next
+    const language = (i18n.language === "fi" ? "fi" : i18n.language === "sv" ? "sv" : "en") as Language;
 
     const setLanguage = (lang: Language) => {
-        setLanguageState(lang);
-        localStorage.setItem(STORAGE_KEY, lang);
+        i18n.changeLanguage(lang);
     };
 
     const getText = (text: BilingualText): string | ReactNode => {
-        // In info reel mode, we don't return a single string, we return both (handled by components)
-        // BUT for simple text consumers, if they call this in info reel mode, 
-        // we probably want to return Finnish or both concatenated?
-        // Actually, components like PageHeader handle bilingual display themselves when in info reel mode.
-        // This helper is primarily for "dumb" components or when we want to force single language.
-
+        // Legacy support helper
         if (isInfoReel) {
-            // If something blindly calls getText in info reel mode, return Finnish (primary)
-            // or maybe a formatted string? Let's return Finnish for now as safe default
-            // for places that can't handle custom bilingual UI.
             return text.finnish;
         }
-
-        return language === "fi" ? text.finnish : text.english;
+        if (language === "fi") return text.finnish;
+        // Fallback to English for Swedish for now as we don't have trilingual content in DB
+        if (language === "sv") return text.english;
+        return text.english;
     };
 
     return (
-        <LanguageContext.Provider value={{ language, setLanguage, getText, isInfoReel }}>
+        <LanguageContext.Provider value={{
+            language,
+            setLanguage,
+            getText,
+            isInfoReel,
+            primaryLanguage,
+            secondaryLanguage
+        }}>
             {children}
         </LanguageContext.Provider>
     );

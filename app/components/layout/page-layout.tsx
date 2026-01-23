@@ -43,20 +43,20 @@ export function PageWrapper({ children, className }: PageWrapperProps) {
 }
 
 interface PageHeaderProps {
-    finnish: string;
-    english: string;
+    primary: string;
+    secondary: string;
     className?: string;
 }
 
-export function PageHeader({ finnish, english, className }: PageHeaderProps) {
-    const { language, isInfoReel } = useLanguage();
+export function PageHeader({ primary, secondary, className }: PageHeaderProps) {
+    const { language, isInfoReel, secondaryLanguage } = useLanguage();
 
     if (isInfoReel) {
         return (
             <h1 className={cn("hidden md:block text-4xl lg:text-5xl font-black tracking-tight leading-tight mb-8", className)}>
-                <span className="text-gray-900 dark:text-white">{finnish}</span>
+                <span className="text-gray-900 dark:text-white">{primary}</span>
                 <br />
-                <span className="text-primary">{english}</span>
+                <span className="text-primary">{secondary}</span>
             </h1>
         );
     }
@@ -64,7 +64,7 @@ export function PageHeader({ finnish, english, className }: PageHeaderProps) {
     return (
         <h1 className={cn("hidden md:block text-4xl lg:text-5xl font-black tracking-tight leading-tight mb-8", className)}>
             <span className="text-gray-900 dark:text-white">
-                {language === "fi" ? finnish : english}
+                {language === secondaryLanguage ? secondary : primary}
             </span>
         </h1>
     );
@@ -74,8 +74,8 @@ interface SplitLayoutProps {
     children: React.ReactNode;
     right?: React.ReactNode;
     header?: {
-        finnish: string;
-        english: string;
+        primary: string;
+        secondary: string;
     };
     className?: string;
     /** Optional footer content shown below main content (e.g., action buttons) */
@@ -84,7 +84,7 @@ interface SplitLayoutProps {
 
 export function SplitLayout({ children, right, header, className, footer }: SplitLayoutProps) {
     const { isInfoReel } = useInfoReel();
-    const { language } = useLanguage();
+    const { language, secondaryLanguage } = useLanguage();
 
     // Info Reel mode: split layout with QR panel
     if (isInfoReel && right) {
@@ -96,7 +96,7 @@ export function SplitLayout({ children, right, header, className, footer }: Spli
                             className="animate-reel-fade-in"
                             style={{ animationDelay: "0ms" }}
                         >
-                            <PageHeader finnish={header.finnish} english={header.english} />
+                            <PageHeader primary={header.primary} secondary={header.secondary} />
                         </div>
                     )}
                     <div
@@ -124,13 +124,13 @@ export function SplitLayout({ children, right, header, className, footer }: Spli
                         <h1 className="text-4xl lg:text-5xl font-black tracking-tight leading-tight">
                             {isInfoReel ? (
                                 <>
-                                    <span className="text-gray-900 dark:text-white">{header.finnish}</span>
+                                    <span className="text-gray-900 dark:text-white">{header.primary}</span>
                                     <br />
-                                    <span className="text-primary">{header.english}</span>
+                                    <span className="text-primary">{header.secondary}</span>
                                 </>
                             ) : (
                                 <span className="text-gray-900 dark:text-white">
-                                    {language === "fi" ? header.finnish : header.english}
+                                    {language === secondaryLanguage ? header.secondary : header.primary}
                                 </span>
                             )}
                         </h1>
@@ -166,10 +166,10 @@ interface QRPanelProps {
     description?: React.ReactNode;
     children?: React.ReactNode;
     className?: string;
-    /** Button text for regular mode (Finnish / English) */
+    /** Button text for regular mode (Primary / Secondary) */
     buttonLabel?: {
-        finnish: string;
-        english: string;
+        primary: string;
+        secondary: string;
     };
     /** Material icon name for the button */
     buttonIcon?: string;
@@ -184,14 +184,14 @@ export function QRPanel({
     description,
     children,
     className,
-    buttonLabel = { finnish: "Avaa linkki", english: "Open Link" },
+    buttonLabel = { primary: "Avaa linkki", secondary: "Open Link" },
     buttonIcon = "open_in_new",
     opacity = 1
 }: QRPanelProps) {
     const path = qrPath || qrUrl || "/";
     const isExternal = !!qrUrl;
     const { isInfoReel } = useInfoReel();
-    const { language } = useLanguage();
+    const { language, secondaryLanguage } = useLanguage();
 
     return (
         <div
@@ -229,7 +229,7 @@ export function QRPanel({
                             </span>
                             <div className="flex flex-col items-start">
                                 <span className="text-2xl font-black tracking-tight">
-                                    {language === "fi" ? buttonLabel.finnish : buttonLabel.english}
+                                    {language === secondaryLanguage ? buttonLabel.secondary : buttonLabel.primary}
                                 </span>
                             </div>
                         </Link>
@@ -242,9 +242,8 @@ export function QRPanel({
                                 {buttonIcon}
                             </span>
                             <span className="text-2xl font-black tracking-tight">
-                                {language === "fi" ? buttonLabel.finnish : buttonLabel.english}
+                                {language === secondaryLanguage ? buttonLabel.secondary : buttonLabel.primary}
                             </span>
-                            {/* Hide secondary label in single-language mode */}
                         </Link>
                     )
                 )}
@@ -265,14 +264,14 @@ export function QRPanel({
 interface ActionButtonProps {
     href: string;
     icon: string;
-    labelFi: string;
-    labelEn: string;
+    labelPrimary: string;
+    labelSecondary: string;
     external?: boolean;
     className?: string;
 }
 
-export function ActionButton({ href, icon, labelFi, labelEn, external = true, className }: ActionButtonProps) {
-    const { language } = useLanguage();
+export function ActionButton({ href, icon, labelPrimary, labelSecondary, external = true, className }: ActionButtonProps) {
+    const { language, secondaryLanguage } = useLanguage();
 
     const ButtonContent = (
         <>
@@ -281,9 +280,8 @@ export function ActionButton({ href, icon, labelFi, labelEn, external = true, cl
             </span>
             <div className="flex flex-col items-start">
                 <span className="text-sm font-black tracking-tight leading-tight">
-                    {language === "fi" ? labelFi : labelEn}
+                    {language === secondaryLanguage ? labelSecondary : labelPrimary}
                 </span>
-                {/* Optional: could show secondary language smaller, but request is to NOT display both */}
             </div>
         </>
     );

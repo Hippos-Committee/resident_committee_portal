@@ -11,10 +11,10 @@ import { useLanguage } from "~/contexts/language-context";
 
 interface MobileActionMenuProps {
     children: React.ReactNode;
-    /** Label for the mobile menu button (Finnish / English) */
+    /** Label for the mobile menu button */
     label?: {
-        finnish: string;
-        english: string;
+        primary: string;
+        secondary: string;
     };
     /** Icon for the mobile menu button */
     icon?: string;
@@ -24,8 +24,8 @@ interface MobileActionMenuProps {
 interface ActionItem {
     href: string;
     icon: string;
-    labelFi: string;
-    labelEn: string;
+    labelPrimary: string;
+    labelSecondary: string;
     external?: boolean;
 }
 
@@ -33,8 +33,8 @@ interface MobileActionMenuWithItemsProps {
     items: ActionItem[];
     /** Label for the mobile menu button */
     label?: {
-        finnish: string;
-        english: string;
+        primary: string;
+        secondary: string;
     };
     /** Icon for the mobile menu button */
     icon?: string;
@@ -49,19 +49,26 @@ interface MobileActionMenuWithItemsProps {
  * ```tsx
  * <MobileActionMenuWithItems
  *   items={[
- *     { href: "/treasury/breakdown", icon: "table_chart", labelFi: "Erittely", labelEn: "Breakdown" },
- *     { href: "/treasury/new", icon: "add", labelFi: "Lisää", labelEn: "Add" },
+ *     { href: "/treasury/breakdown", icon: "table_chart", labelPrimary: "Erittely", labelSecondary: "Breakdown" },
+ *     { href: "/treasury/new", icon: "add", labelPrimary: "Lisää", labelSecondary: "Add" },
  *   ]}
  * />
  * ```
  */
 export function MobileActionMenuWithItems({
     items,
-    label = { finnish: "Toiminnot", english: "Actions" },
+    label = { primary: "Toiminnot", secondary: "Actions" },
     icon = "more_vert",
     className,
 }: MobileActionMenuWithItemsProps) {
-    const { language, isInfoReel } = useLanguage();
+    const { language, isInfoReel, secondaryLanguage } = useLanguage();
+
+    const getLabel = (primary: string, secondary: string) => {
+        if (isInfoReel) {
+            return primary;
+        }
+        return language === secondaryLanguage ? secondary : primary;
+    };
 
     return (
         <>
@@ -78,7 +85,7 @@ export function MobileActionMenuWithItems({
                                 {icon}
                             </span>
                             <span className="text-xs font-bold">
-                                {(language === "fi" || isInfoReel) ? label.finnish : label.english}
+                                {getLabel(label.primary, label.secondary)}
                             </span>
                         </Button>
                     </DropdownMenuTrigger>
@@ -97,11 +104,11 @@ export function MobileActionMenuWithItems({
                                         </span>
                                         <div>
                                             <p className="font-medium">
-                                                {(language === "fi" || isInfoReel) ? item.labelFi : item.labelEn}
+                                                {getLabel(item.labelPrimary, item.labelSecondary)}
                                             </p>
                                             {isInfoReel && (
                                                 <p className="text-xs text-muted-foreground">
-                                                    {item.labelEn}
+                                                    {item.labelSecondary}
                                                 </p>
                                             )}
                                         </div>
@@ -116,11 +123,11 @@ export function MobileActionMenuWithItems({
                                         </span>
                                         <div>
                                             <p className="font-medium">
-                                                {(language === "fi" || isInfoReel) ? item.labelFi : item.labelEn}
+                                                {getLabel(item.labelPrimary, item.labelSecondary)}
                                             </p>
                                             {isInfoReel && (
                                                 <p className="text-xs text-muted-foreground">
-                                                    {item.labelEn}
+                                                    {item.labelSecondary}
                                                 </p>
                                             )}
                                         </div>
@@ -148,11 +155,11 @@ export function MobileActionMenuWithItems({
                             </span>
                             <div className="flex flex-col items-start">
                                 <span className="text-sm font-black tracking-tight leading-tight">
-                                    {(language === "fi" || isInfoReel) ? item.labelFi : item.labelEn}
+                                    {getLabel(item.labelPrimary, item.labelSecondary)}
                                 </span>
                                 {isInfoReel && (
                                     <span className="text-xs font-bold opacity-80">
-                                        {item.labelEn}
+                                        {item.labelSecondary}
                                     </span>
                                 )}
                             </div>
@@ -168,11 +175,11 @@ export function MobileActionMenuWithItems({
                             </span>
                             <div className="flex flex-col items-start">
                                 <span className="text-sm font-black tracking-tight leading-tight">
-                                    {(language === "fi" || isInfoReel) ? item.labelFi : item.labelEn}
+                                    {getLabel(item.labelPrimary, item.labelSecondary)}
                                 </span>
                                 {isInfoReel && (
                                     <span className="text-xs font-bold opacity-80">
-                                        {item.labelEn}
+                                        {item.labelSecondary}
                                     </span>
                                 )}
                             </div>

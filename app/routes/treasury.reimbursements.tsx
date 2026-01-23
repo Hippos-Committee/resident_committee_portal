@@ -1,5 +1,6 @@
 import type { Route } from "./+types/treasury.reimbursements";
 import { Form, Link, useRouteLoaderData, useSearchParams } from "react-router";
+import { useTranslation } from "react-i18next";
 import { requirePermission } from "~/lib/auth.server";
 import { getDatabase, type Purchase } from "~/db";
 import { SITE_CONFIG } from "~/lib/config.server";
@@ -119,11 +120,12 @@ export async function action({ request }: Route.ActionArgs) {
     return { success: true };
 }
 
-const statusConfig = {
-    pending: { fi: "Odottaa", en: "Pending", color: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300" },
-    approved: { fi: "Hyväksytty", en: "Approved", color: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300" },
-    reimbursed: { fi: "Maksettu", en: "Paid", color: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300" },
-    rejected: { fi: "Hylätty", en: "Rejected", color: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300" },
+// Helper for status colors - kept outside as it doesn't need translation
+const statusColors = {
+    pending: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300",
+    approved: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
+    reimbursed: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
+    rejected: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300",
 };
 
 export default function BudgetReimbursements({ loaderData }: Route.ComponentProps) {
@@ -131,13 +133,14 @@ export default function BudgetReimbursements({ loaderData }: Route.ComponentProp
     const [searchParams, setSearchParams] = useSearchParams();
     const rootData = useRouteLoaderData<typeof rootLoader>("root");
     const isStaff = rootData?.user?.roleName === "Admin" || rootData?.user?.roleName === "Board Member";
+    const { t, i18n } = useTranslation();
 
     const formatCurrency = (value: number | string) => {
         const num = typeof value === "string" ? parseFloat(value) : value;
         return num.toFixed(2).replace(".", ",") + " €";
     };
 
-    const formatDate = (date: Date | string) => new Date(date).toLocaleDateString("fi-FI");
+    const formatDate = (date: Date | string) => new Date(date).toLocaleDateString(i18n.language === "fi" ? "fi-FI" : "en-US");
 
     const handleFilter = (key: string, value: string) => {
         const params = new URLSearchParams(searchParams);
@@ -153,7 +156,7 @@ export default function BudgetReimbursements({ loaderData }: Route.ComponentProp
         return (
             <PageWrapper>
                 <div className="p-8 text-center">
-                    <p className="text-gray-500">Ei käyttöoikeutta / Access denied</p>
+                    <p className="text-gray-500">{t("treasury.reimbursements.access_denied")}</p>
                 </div>
             </PageWrapper>
         );
@@ -170,17 +173,16 @@ export default function BudgetReimbursements({ loaderData }: Route.ComponentProp
                             className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-primary mb-2"
                         >
                             <span className="material-symbols-outlined text-base">arrow_back</span>
-                            Takaisin / Back
+                            {t("treasury.reimbursements.back")}
                         </Link>
                         <h1 className="text-3xl md:text-4xl font-black text-gray-900 dark:text-white">
-                            Kulukorvaukset
+                            {t("treasury.reimbursements.title")}
                         </h1>
-                        <p className="text-lg text-gray-500">Reimbursements</p>
                     </div>
                     <Link to="/treasury/reimbursement/new">
                         <Button>
                             <span className="material-symbols-outlined mr-2">add</span>
-                            Uusi / New
+                            {t("treasury.reimbursements.new")}
                         </Button>
                     </Link>
                 </div>
@@ -188,15 +190,15 @@ export default function BudgetReimbursements({ loaderData }: Route.ComponentProp
                 {/* Summary cards */}
                 <div className="grid grid-cols-3 gap-4 mb-6">
                     <div className="bg-yellow-50 dark:bg-yellow-900/20 rounded-xl p-4 border border-yellow-200 dark:border-yellow-800">
-                        <p className="text-xs font-bold uppercase text-yellow-700 dark:text-yellow-300">Odottaa / Pending</p>
+                        <p className="text-xs font-bold uppercase text-yellow-700 dark:text-yellow-300">{t("treasury.reimbursements.statuses.pending")}</p>
                         <p className="text-xl font-black text-yellow-800 dark:text-yellow-200">{formatCurrency(totals.pending)}</p>
                     </div>
                     <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-4 border border-blue-200 dark:border-blue-800">
-                        <p className="text-xs font-bold uppercase text-blue-700 dark:text-blue-300">Hyväksytty / Approved</p>
+                        <p className="text-xs font-bold uppercase text-blue-700 dark:text-blue-300">{t("treasury.reimbursements.statuses.approved")}</p>
                         <p className="text-xl font-black text-blue-800 dark:text-blue-200">{formatCurrency(totals.approved)}</p>
                     </div>
                     <div className="bg-green-50 dark:bg-green-900/20 rounded-xl p-4 border border-green-200 dark:border-green-800">
-                        <p className="text-xs font-bold uppercase text-green-700 dark:text-green-300">Maksettu / Paid</p>
+                        <p className="text-xs font-bold uppercase text-green-700 dark:text-green-300">{t("treasury.reimbursements.statuses.reimbursed")}</p>
                         <p className="text-xl font-black text-green-800 dark:text-green-200">{formatCurrency(totals.reimbursed)}</p>
                     </div>
                 </div>
@@ -204,7 +206,7 @@ export default function BudgetReimbursements({ loaderData }: Route.ComponentProp
                 {/* Filters */}
                 <div className="flex flex-wrap gap-4 mb-6">
                     <div className="flex gap-2">
-                        <span className="text-sm text-gray-500 self-center">Status:</span>
+                        <span className="text-sm text-gray-500 self-center">{t("treasury.reimbursements.status")}:</span>
                         {["all", "pending", "approved", "reimbursed", "rejected"].map(s => (
                             <button
                                 key={s}
@@ -214,13 +216,13 @@ export default function BudgetReimbursements({ loaderData }: Route.ComponentProp
                                     : "bg-gray-200 dark:bg-gray-700 hover:bg-primary/20"
                                     }`}
                             >
-                                {s === "all" ? "Kaikki" : statusConfig[s as keyof typeof statusConfig]?.fi}
+                                {s === "all" ? t("treasury.reimbursements.all") : t(`treasury.reimbursements.statuses.${s}`)}
                             </button>
                         ))}
                     </div>
                     {years.length > 0 && (
                         <div className="flex gap-2">
-                            <span className="text-sm text-gray-500 self-center">Vuosi:</span>
+                            <span className="text-sm text-gray-500 self-center">{t("treasury.year")}:</span>
                             {years.map((y: number) => (
                                 <button
                                     key={y}
@@ -241,25 +243,27 @@ export default function BudgetReimbursements({ loaderData }: Route.ComponentProp
                 <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
                     {purchases.length === 0 ? (
                         <div className="p-8 text-center text-gray-500">
-                            Ei kulukorvauksia / No reimbursements
+                            {t("treasury.no_transactions")}
                         </div>
                     ) : (
                         <Table>
                             <TableHeader>
                                 <TableRow>
-                                    <TableHead>Päivä</TableHead>
-                                    <TableHead>Kuvaus</TableHead>
-                                    <TableHead>Ostaja</TableHead>
-                                    <TableHead>Summa</TableHead>
-                                    <TableHead>Status</TableHead>
-                                    <TableHead title="Sähköposti lähetetty">📧</TableHead>
-                                    <TableHead title="Vastaus vastaanotettu">💬</TableHead>
+                                    <TableHead>{t("treasury.reimbursements.date")}</TableHead>
+                                    <TableHead>{t("treasury.reimbursements.description")}</TableHead>
+                                    <TableHead>{t("treasury.reimbursements.purchaser")}</TableHead>
+                                    <TableHead>{t("treasury.reimbursements.amount")}</TableHead>
+                                    <TableHead>{t("treasury.reimbursements.status")}</TableHead>
+                                    <TableHead title={t("treasury.reimbursements.email_sent")}>📧</TableHead>
+                                    <TableHead title={t("treasury.reimbursements.reply_received")}>💬</TableHead>
                                     <TableHead></TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
                                 {purchases.map((purchase: Purchase & { inventoryItem: any }) => {
-                                    const statusInfo = statusConfig[purchase.status] || statusConfig.pending;
+                                    // Use type assertion to ensure status is a valid key, fallback to pending color if not
+                                    const statusKey = purchase.status as keyof typeof statusColors;
+                                    const statusColor = statusColors[statusKey] || statusColors.pending;
                                     const displayName = purchase.inventoryItem?.name || purchase.description || "—";
                                     const canApprove = rootData?.user?.permissions?.includes("reimbursements:approve") ||
                                         rootData?.user?.permissions?.includes("*");
@@ -285,23 +289,23 @@ export default function BudgetReimbursements({ loaderData }: Route.ComponentProp
                                                             name="status"
                                                             defaultValue={purchase.status}
                                                             onChange={(e) => e.target.form?.requestSubmit()}
-                                                            className={`px-2 py-1 rounded text-xs font-bold cursor-pointer border-0 ${statusInfo.color}`}
+                                                            className={`px-2 py-1 rounded text-xs font-bold cursor-pointer border-0 ${statusColor}`}
                                                         >
-                                                            <option value="pending">Odottaa / Pending</option>
-                                                            <option value="approved">Hyväksytty / Approved</option>
-                                                            <option value="reimbursed">Maksettu / Paid</option>
-                                                            <option value="rejected">Hylätty / Rejected</option>
+                                                            <option value="pending">{t("treasury.reimbursements.statuses.pending")}</option>
+                                                            <option value="approved">{t("treasury.reimbursements.statuses.approved")}</option>
+                                                            <option value="reimbursed">{t("treasury.reimbursements.statuses.reimbursed")}</option>
+                                                            <option value="rejected">{t("treasury.reimbursements.statuses.rejected")}</option>
                                                         </select>
                                                     </Form>
                                                 ) : (
-                                                    <span className={`px-2 py-1 rounded text-xs font-bold ${statusInfo.color}`}>
-                                                        {statusInfo.fi}
+                                                    <span className={`px-2 py-1 rounded text-xs font-bold ${statusColor}`}>
+                                                        {t(`treasury.reimbursements.statuses.${purchase.status}`)}
                                                     </span>
                                                 )}
                                             </TableCell>
                                             <TableCell>
                                                 {purchase.emailSent ? (
-                                                    <span className="text-green-600" title="Sähköposti lähetetty">✓</span>
+                                                    <span className="text-green-600" title={t("treasury.reimbursements.email_sent")}>✓</span>
                                                 ) : purchase.emailError ? (
                                                     <span className="text-red-600" title={purchase.emailError}>✗</span>
                                                 ) : (
@@ -313,7 +317,7 @@ export default function BudgetReimbursements({ loaderData }: Route.ComponentProp
                                                 {purchase.emailReplyReceived ? (
                                                     <span
                                                         className="text-blue-600 cursor-help"
-                                                        title={purchase.emailReplyContent || "Vastaus vastaanotettu"}
+                                                        title={purchase.emailReplyContent || t("treasury.reimbursements.reply_received")}
                                                     >
                                                         💬
                                                     </span>
@@ -329,12 +333,12 @@ export default function BudgetReimbursements({ loaderData }: Route.ComponentProp
                                                         <button
                                                             type="submit"
                                                             onClick={(e) => {
-                                                                if (!confirm("Haluatko varmasti poistaa tämän kulukorvauksen? / Are you sure you want to delete this reimbursement?")) {
+                                                                if (!confirm(t("treasury.reimbursements.delete_confirm"))) {
                                                                     e.preventDefault();
                                                                 }
                                                             }}
                                                             className="text-red-500 hover:text-red-700 transition-colors"
-                                                            title="Poista / Delete"
+                                                            title={t("settings.common.delete")}
                                                         >
                                                             <span className="material-symbols-outlined text-lg">delete</span>
                                                         </button>

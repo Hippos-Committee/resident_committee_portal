@@ -77,11 +77,16 @@ export async function loader({ request }: Route.LoaderArgs) {
     };
 }
 
+import { useTranslation } from "react-i18next";
+import { useLanguage } from "~/contexts/language-context";
+
 export default function TreasuryBreakdown({ loaderData }: Route.ComponentProps) {
     const { year, transactions, totalExpenses, totalIncome, balance, years } = loaderData;
     const [searchParams, setSearchParams] = useSearchParams();
     const { hasPermission } = useUser();
     const canEdit = hasPermission("treasury:edit");
+    const { t, i18n } = useTranslation();
+    const { isInfoReel } = useLanguage();
 
     const formatCurrency = (value: number | string) => {
         const num = typeof value === "string" ? parseFloat(value) : value;
@@ -89,7 +94,7 @@ export default function TreasuryBreakdown({ loaderData }: Route.ComponentProps) 
     };
 
     const formatDate = (date: Date | string) => {
-        return new Date(date).toLocaleDateString("fi-FI");
+        return new Date(date).toLocaleDateString(i18n.language);
     };
 
     const handleYearChange = (newYear: number) => {
@@ -107,12 +112,14 @@ export default function TreasuryBreakdown({ loaderData }: Route.ComponentProps) 
                             className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-primary mb-2"
                         >
                             <span className="material-symbols-outlined text-base">arrow_back</span>
-                            Takaisin / Back
+                            {t("treasury.breakdown.back")}
                         </Link>
                         <h1 className="text-3xl md:text-4xl font-black text-gray-900 dark:text-white">
-                            Rahastoerittely {year}
+                            {t("treasury.breakdown.title")} {year}
                         </h1>
-                        <p className="text-lg text-gray-500">Treasury Breakdown {year}</p>
+                        <p className="text-lg text-gray-500">
+                            {isInfoReel ? t("treasury.breakdown.title", { lng: "en" }) : t("treasury.breakdown.title")} {year}
+                        </p>
                     </div>
 
                     <div className="flex items-center gap-4">
@@ -140,7 +147,7 @@ export default function TreasuryBreakdown({ loaderData }: Route.ComponentProps) 
                                 href={`/api/treasury/export?year=${year}`}
                                 download={`transactions-${year}.csv`}
                                 className="p-2 text-gray-500 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"
-                                title="Lataa CSV / Export CSV"
+                                title={t("treasury.breakdown.export")}
                             >
                                 <span className="material-symbols-outlined text-xl">download</span>
                             </a>
@@ -151,15 +158,15 @@ export default function TreasuryBreakdown({ loaderData }: Route.ComponentProps) 
                 {/* Summary cards - 3 columns now (no allocation) */}
                 <div className="grid grid-cols-3 gap-4 mb-8">
                     <div className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border border-gray-200 dark:border-gray-700">
-                        <p className="text-xs font-bold uppercase text-gray-500 mb-1">Tulot / Income</p>
+                        <p className="text-xs font-bold uppercase text-gray-500 mb-1">{t("treasury.breakdown.income")}</p>
                         <p className="text-xl font-black text-green-600 dark:text-green-400">+{formatCurrency(totalIncome)}</p>
                     </div>
                     <div className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border border-gray-200 dark:border-gray-700">
-                        <p className="text-xs font-bold uppercase text-gray-500 mb-1">Menot / Expenses</p>
+                        <p className="text-xs font-bold uppercase text-gray-500 mb-1">{t("treasury.breakdown.expenses")}</p>
                         <p className="text-xl font-black text-red-600 dark:text-red-400">-{formatCurrency(totalExpenses)}</p>
                     </div>
                     <div className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border border-gray-200 dark:border-gray-700">
-                        <p className="text-xs font-bold uppercase text-gray-500 mb-1">Saldo / Balance</p>
+                        <p className="text-xs font-bold uppercase text-gray-500 mb-1">{t("treasury.breakdown.balance")}</p>
                         <p className={`text-xl font-black ${balance >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
                             {formatCurrency(balance)}
                         </p>
@@ -170,23 +177,23 @@ export default function TreasuryBreakdown({ loaderData }: Route.ComponentProps) 
                 <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
                     <div className="p-4 border-b border-gray-200 dark:border-gray-700">
                         <h2 className="text-lg font-bold text-gray-900 dark:text-white">
-                            Tapahtumat / Transactions ({transactions.length})
+                            {t("treasury.breakdown.transactions")} ({transactions.length})
                         </h2>
                     </div>
 
                     {transactions.length === 0 ? (
                         <div className="p-8 text-center text-gray-500">
-                            Ei tapahtumia tälle vuodelle / No transactions for this year
+                            {t("treasury.breakdown.no_transactions")}
                         </div>
                     ) : (
                         <Table>
                             <TableHeader>
                                 <TableRow>
-                                    <TableHead>Päivä / Date</TableHead>
-                                    <TableHead>Kuvaus / Description</TableHead>
-                                    <TableHead>Kategoria / Category</TableHead>
-                                    <TableHead>Tila / Status</TableHead>
-                                    <TableHead className="text-right">Summa / Amount</TableHead>
+                                    <TableHead>{t("treasury.breakdown.date")}</TableHead>
+                                    <TableHead>{t("treasury.breakdown.description")}</TableHead>
+                                    <TableHead>{t("treasury.breakdown.category")}</TableHead>
+                                    <TableHead>{t("treasury.breakdown.status")}</TableHead>
+                                    <TableHead className="text-right">{t("treasury.breakdown.amount")}</TableHead>
                                     {canEdit && <TableHead className="w-16"></TableHead>}
                                 </TableRow>
                             </TableHeader>
@@ -211,10 +218,7 @@ export default function TreasuryBreakdown({ loaderData }: Route.ComponentProps) 
                                                         ? "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300"
                                                         : "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400"
                                                 }`}>
-                                                {transaction.status === "complete" ? "Valmis"
-                                                    : transaction.status === "pending" ? "Odottaa"
-                                                        : transaction.status === "paused" ? "Pysäytetty"
-                                                            : "Hylätty"}
+                                                {t(`treasury.breakdown.actions.edit.statuses.${transaction.status}`, { defaultValue: transaction.status })}
                                             </span>
                                         </TableCell>
                                         <TableCell className={`text-right font-bold ${transaction.type === "expense"
@@ -243,7 +247,7 @@ export default function TreasuryBreakdown({ loaderData }: Route.ComponentProps) 
 
                 {/* Note about transparency */}
                 <p className="mt-6 text-sm text-gray-500 text-center">
-                    Tämä on julkista tietoa / This is public information
+                    {t("treasury.breakdown.public_info")}
                 </p>
             </div>
         </PageWrapper>

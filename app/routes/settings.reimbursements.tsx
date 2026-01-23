@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { Form, useNavigation, useActionData } from "react-router";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import type { Route } from "./+types/settings.reimbursements";
 import { PageWrapper } from "~/components/layout/page-layout";
@@ -121,6 +122,7 @@ export async function action({ request }: Route.ActionArgs) {
 
 export default function SettingsReimbursements({ loaderData }: Route.ComponentProps) {
     const { settings, models, defaultKeywords } = loaderData;
+    const { t } = useTranslation();
     const navigation = useNavigation();
     const actionData = useActionData<typeof action>();
     const isSubmitting = navigation.state === "submitting";
@@ -152,7 +154,7 @@ export default function SettingsReimbursements({ loaderData }: Route.ComponentPr
 
     // Format price for display
     const formatPrice = (price: number) => {
-        if (price === 0) return "Free";
+        if (price === 0) return t("settings.common.free");
         if (price < 0.01) return `$${price.toFixed(4)}`;
         return `$${price.toFixed(2)}`;
     };
@@ -163,9 +165,8 @@ export default function SettingsReimbursements({ loaderData }: Route.ComponentPr
                 {/* Header */}
                 <div className="mb-8">
                     <h1 className="text-3xl md:text-4xl font-black text-gray-900 dark:text-white">
-                        Korvausasetukset
+                        {t("settings.reimbursements.title")}
                     </h1>
-                    <p className="text-lg text-gray-500">Reimbursement Settings</p>
                 </div>
 
                 <div className="space-y-6">
@@ -177,10 +178,10 @@ export default function SettingsReimbursements({ loaderData }: Route.ComponentPr
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2">
                                 <span className="material-symbols-outlined">key</span>
-                                OpenRouter API Key
+                                {t("settings.reimbursements.api_key_title")}
                             </CardTitle>
                             <CardDescription>
-                                Get your API key from <a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer" className="text-primary underline">openrouter.ai/keys</a>
+                                {t("settings.reimbursements.api_key_desc")}
                             </CardDescription>
                         </CardHeader>
                         <CardContent>
@@ -196,13 +197,13 @@ export default function SettingsReimbursements({ loaderData }: Route.ComponentPr
                                         className="font-mono"
                                     />
                                     <Button type="submit" disabled={isSubmitting}>
-                                        {isSubmitting ? "Saving..." : "Save"}
+                                        {isSubmitting ? t("settings.common.saving") : t("settings.common.save")}
                                     </Button>
                                     {settings.hasApiKey && (
                                         <Form method="post">
                                             <input type="hidden" name="intent" value="delete-api-key" />
                                             <Button type="submit" variant="destructive" disabled={isSubmitting}>
-                                                Delete
+                                                {t("settings.common.delete")}
                                             </Button>
                                         </Form>
                                     )}
@@ -216,10 +217,10 @@ export default function SettingsReimbursements({ loaderData }: Route.ComponentPr
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2">
                                 <span className="material-symbols-outlined">smart_toy</span>
-                                AI Parsing
+                                {t("settings.reimbursements.ai_parsing_title")}
                             </CardTitle>
                             <CardDescription>
-                                Enable AI-assisted parsing for more accurate reply interpretation
+                                {t("settings.reimbursements.ai_parsing_desc")}
                             </CardDescription>
                         </CardHeader>
                         <CardContent>
@@ -230,9 +231,9 @@ export default function SettingsReimbursements({ loaderData }: Route.ComponentPr
 
                                 <div className="flex items-center justify-between">
                                     <div>
-                                        <Label>Enable AI Parsing</Label>
+                                        <Label>{t("settings.reimbursements.enable_ai")}</Label>
                                         <p className="text-sm text-muted-foreground">
-                                            Use AI to interpret email replies before falling back to keywords
+                                            {t("settings.reimbursements.enable_ai_desc")}
                                         </p>
                                     </div>
                                     <Switch
@@ -245,14 +246,14 @@ export default function SettingsReimbursements({ loaderData }: Route.ComponentPr
                                 {settings.hasApiKey && models.length > 0 && (
                                     <>
                                         <div className="flex items-center gap-2 mb-2">
-                                            <Label>Sort by:</Label>
+                                            <Label>{t("settings.reimbursements.sort_by")}</Label>
                                             <Button
                                                 type="button"
                                                 variant={sortBy === "price" ? "default" : "outline"}
                                                 size="sm"
                                                 onClick={() => setSortBy("price")}
                                             >
-                                                Price
+                                                {t("settings.reimbursements.price")}
                                             </Button>
                                             <Button
                                                 type="button"
@@ -260,15 +261,15 @@ export default function SettingsReimbursements({ loaderData }: Route.ComponentPr
                                                 size="sm"
                                                 onClick={() => setSortBy("name")}
                                             >
-                                                Name
+                                                {t("settings.reimbursements.name")}
                                             </Button>
                                         </div>
 
                                         <div className="space-y-2">
-                                            <Label>AI Model</Label>
+                                            <Label>{t("settings.reimbursements.ai_model_label")}</Label>
                                             <Select value={aiModel} onValueChange={setAiModel}>
                                                 <SelectTrigger>
-                                                    <SelectValue placeholder="Select a model..." />
+                                                    <SelectValue placeholder={t("settings.reimbursements.select_model")} />
                                                 </SelectTrigger>
                                                 <SelectContent className="max-h-64">
                                                     {sortedModels.slice(0, 50).map((model) => (
@@ -284,7 +285,7 @@ export default function SettingsReimbursements({ loaderData }: Route.ComponentPr
                                                 </SelectContent>
                                             </Select>
                                             <p className="text-xs text-muted-foreground">
-                                                Showing {Math.min(50, sortedModels.length)} of {sortedModels.length} models
+                                                {t("settings.reimbursements.showing_models", { count: Math.min(50, sortedModels.length), total: sortedModels.length })}
                                             </p>
                                         </div>
                                     </>
@@ -292,12 +293,12 @@ export default function SettingsReimbursements({ loaderData }: Route.ComponentPr
 
                                 {!settings.hasApiKey && (
                                     <p className="text-sm text-muted-foreground italic">
-                                        Add an API key above to enable AI parsing and select a model.
+                                        {t("settings.reimbursements.no_api_key_msg")}
                                     </p>
                                 )}
 
                                 <Button type="submit" disabled={isSubmitting || !settings.hasApiKey}>
-                                    {isSubmitting ? "Saving..." : "Save AI Settings"}
+                                    {isSubmitting ? t("settings.common.saving") : t("settings.reimbursements.save_ai_settings")}
                                 </Button>
                             </Form>
                         </CardContent>
@@ -308,10 +309,10 @@ export default function SettingsReimbursements({ loaderData }: Route.ComponentPr
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2">
                                 <span className="material-symbols-outlined">checklist</span>
-                                Keywords
+                                {t("settings.reimbursements.keywords_title")}
                             </CardTitle>
                             <CardDescription>
-                                Custom keywords for detecting approval or rejection in emails
+                                {t("settings.reimbursements.keywords_desc")}
                             </CardDescription>
                         </CardHeader>
                         <CardContent>
@@ -319,7 +320,7 @@ export default function SettingsReimbursements({ loaderData }: Route.ComponentPr
                                 <input type="hidden" name="intent" value="save-keywords" />
 
                                 <div className="space-y-2">
-                                    <Label>Default Approval Keywords</Label>
+                                    <Label>{t("settings.reimbursements.default_approval")}</Label>
                                     <div className="flex flex-wrap gap-1">
                                         {defaultKeywords.approval.map((kw: string) => (
                                             <Badge key={kw} variant="outline" className="text-green-600 border-green-300">
@@ -330,18 +331,18 @@ export default function SettingsReimbursements({ loaderData }: Route.ComponentPr
                                 </div>
 
                                 <div className="space-y-2">
-                                    <Label htmlFor="customApproval">Additional Approval Keywords</Label>
+                                    <Label htmlFor="customApproval">{t("settings.reimbursements.additional_approval")}</Label>
                                     <Input
                                         id="customApproval"
                                         name="customApproval"
                                         value={customApproval}
                                         onChange={(e) => setCustomApproval(e.target.value)}
-                                        placeholder="paid, done, accepted (comma-separated)"
+                                        placeholder={t("settings.reimbursements.approval_placeholder")}
                                     />
                                 </div>
 
                                 <div className="space-y-2">
-                                    <Label>Default Rejection Keywords</Label>
+                                    <Label>{t("settings.reimbursements.default_rejection")}</Label>
                                     <div className="flex flex-wrap gap-1">
                                         {defaultKeywords.rejection.map((kw: string) => (
                                             <Badge key={kw} variant="outline" className="text-red-600 border-red-300">
@@ -352,18 +353,18 @@ export default function SettingsReimbursements({ loaderData }: Route.ComponentPr
                                 </div>
 
                                 <div className="space-y-2">
-                                    <Label htmlFor="customRejection">Additional Rejection Keywords</Label>
+                                    <Label htmlFor="customRejection">{t("settings.reimbursements.additional_rejection")}</Label>
                                     <Input
                                         id="customRejection"
                                         name="customRejection"
                                         value={customRejection}
                                         onChange={(e) => setCustomRejection(e.target.value)}
-                                        placeholder="refused, cancelled (comma-separated)"
+                                        placeholder={t("settings.reimbursements.rejection_placeholder")}
                                     />
                                 </div>
 
                                 <Button type="submit" disabled={isSubmitting}>
-                                    {isSubmitting ? "Saving..." : "Save Keywords"}
+                                    {isSubmitting ? t("settings.common.saving") : t("settings.reimbursements.save_keywords")}
                                 </Button>
                             </Form>
                         </CardContent>

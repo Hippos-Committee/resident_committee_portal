@@ -1,5 +1,6 @@
 import type { Route } from "./+types/treasury.reimbursement.new";
 import { Form, redirect, useNavigate, useNavigation } from "react-router";
+import { useTranslation } from "react-i18next";
 import { useState } from "react";
 import { requirePermission } from "~/lib/auth.server";
 import { getDatabase, type NewPurchase, type NewInventoryItem } from "~/db";
@@ -217,6 +218,7 @@ export default function NewReimbursement({ loaderData }: Route.ComponentProps) {
     const navigate = useNavigate();
     const [addToInventory, setAddToInventory] = useState(false);
     const [descriptionValue, setDescriptionValue] = useState("");
+    const { t } = useTranslation();
 
     const navigation = useNavigation();
     const isSubmitting = navigation.state === "submitting";
@@ -226,30 +228,30 @@ export default function NewReimbursement({ loaderData }: Route.ComponentProps) {
             <div className="w-full max-w-2xl mx-auto px-4">
                 <div className="mb-8">
                     <h1 className="text-3xl md:text-4xl font-black text-gray-900 dark:text-white">
-                        Uusi kulukorvaus
+                        {t("treasury.new_reimbursement.title")}
                     </h1>
-                    <p className="text-lg text-gray-500">New Reimbursement</p>
+                    <p className="text-lg text-gray-500">{t("treasury.new_reimbursement.subtitle")}</p>
                 </div>
 
                 <Form method="post" encType="multipart/form-data" className="space-y-6">
                     {/* Purchase Info - description and amount are specific to this form */}
                     <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-200 dark:border-gray-700 space-y-4">
-                        <h2 className="text-lg font-bold">Ostoksen tiedot / Purchase Details</h2>
+                        <h2 className="text-lg font-bold">{t("treasury.new_reimbursement.purchase_details")}</h2>
 
                         <div className="space-y-2">
-                            <Label htmlFor="description">Kuvaus / Description *</Label>
+                            <Label htmlFor="description">{t("treasury.new_reimbursement.description")} *</Label>
                             <Input
                                 id="description"
                                 name="description"
                                 required
-                                placeholder="Esim. Kahvitarjoilu kokoukseen"
+                                placeholder={t("treasury.new_reimbursement.description_placeholder")}
                                 value={descriptionValue}
                                 onChange={(e) => setDescriptionValue(e.target.value)}
                             />
                         </div>
 
                         <div className="space-y-2">
-                            <Label htmlFor="amount">Summa € / Amount € *</Label>
+                            <Label htmlFor="amount">{t("treasury.new_reimbursement.amount")} *</Label>
                             <Input
                                 id="amount"
                                 name="amount"
@@ -287,19 +289,19 @@ export default function NewReimbursement({ loaderData }: Route.ComponentProps) {
                                 onCheckedChange={(checked: boolean) => setAddToInventory(checked)}
                             />
                             <Label htmlFor="addToInventory" className="cursor-pointer">
-                                Lisää myös inventaarioon / Also add to inventory
+                                {t("treasury.new_reimbursement.add_to_inventory")}
                             </Label>
                         </div>
 
                         {addToInventory && (
                             <div className="grid grid-cols-2 gap-4 pt-4 border-t border-gray-200 dark:border-gray-700">
                                 <div className="space-y-2">
-                                    <Label htmlFor="location">Sijainti / Location</Label>
-                                    <Input id="location" name="location" placeholder="Esim. Kerhohuone" />
+                                    <Label htmlFor="location">{t("treasury.new_reimbursement.location")}</Label>
+                                    <Input id="location" name="location" placeholder={t("treasury.new_reimbursement.location_placeholder")} />
                                 </div>
                                 <div className="space-y-2">
-                                    <Label htmlFor="category">Kategoria / Category</Label>
-                                    <Input id="category" name="category" placeholder="Esim. Keittiö" />
+                                    <Label htmlFor="category">{t("treasury.new_reimbursement.category")}</Label>
+                                    <Input id="category" name="category" placeholder={t("treasury.new_reimbursement.category_placeholder")} />
                                 </div>
                             </div>
                         )}
@@ -312,7 +314,7 @@ export default function NewReimbursement({ loaderData }: Route.ComponentProps) {
                             onClick={() => navigate(-1)}
                             className="flex-1"
                         >
-                            Peruuta / Cancel
+                            {t("treasury.new_reimbursement.cancel")}
                         </Button>
                         <Button
                             type="submit"
@@ -322,9 +324,9 @@ export default function NewReimbursement({ loaderData }: Route.ComponentProps) {
                             {isSubmitting ? (
                                 <span className="flex items-center gap-2">
                                     <span className="animate-spin material-symbols-outlined text-sm">progress_activity</span>
-                                    <span>Lähetetään... / Submitting...</span>
+                                    <span>{t("treasury.new_reimbursement.submitting")}</span>
                                 </span>
-                            ) : "Lähetä / Submit"}
+                            ) : t("treasury.new_reimbursement.submit")}
                         </Button>
                     </div>
                 </Form>

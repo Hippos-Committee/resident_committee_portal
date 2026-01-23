@@ -1,5 +1,6 @@
 import type { Route } from "./+types/treasury.breakdown.$transactionId.edit";
 import { Form, redirect, useNavigate, useFetcher, useActionData, useSearchParams } from "react-router";
+import { useTranslation } from "react-i18next";
 import { useState, useEffect, useRef } from "react";
 import { useNewTransaction } from "~/contexts/new-transaction-context";
 import { requirePermission } from "~/lib/auth.server";
@@ -111,8 +112,8 @@ export async function action({ request, params }: Route.ActionArgs) {
         if (activeItems.length > 0) {
             const itemNames = activeItems.map(item => item.name).join(", ");
             return {
-                error: `Tapahtumaa ei voi poistaa koska siihen on linkitetty aktiivisia tavaroita: ${itemNames}. Poista tai merkitse tavarat Legacy-tilaan ensin.`,
-                errorEn: `Cannot delete transaction because it has linked active inventory items: ${itemNames}. Remove or mark items as Legacy first.`,
+                error: "treasury.breakdown.edit.delete_error_linked",
+                linkedItemNames: itemNames,
                 linkedItems: activeItems,
             };
         }
@@ -203,9 +204,10 @@ export default function EditTransaction({ loaderData }: Route.ComponentProps) {
     };
     const navigate = useNavigate();
     const fetcher = useFetcher();
-    const actionData = useActionData<typeof action>();
+    const actionData = useActionData<typeof action>() as any; // Cast to any to access custom error fields easily
     const [searchParams, setSearchParams] = useSearchParams();
     const { items: contextItems, isHydrated, clearItems } = useNewTransaction();
+    const { t, i18n } = useTranslation();
 
     const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
@@ -272,12 +274,12 @@ export default function EditTransaction({ loaderData }: Route.ComponentProps) {
             );
         }
         setPendingItems([]);
-        toast.success("Tavarat linkitetty / Items linked");
+        toast.success(t("treasury.breakdown.edit.items_linked_success"));
     };
 
 
     const formatDate = (date: Date | string) => {
-        return new Date(date).toLocaleDateString("fi-FI");
+        return new Date(date).toLocaleDateString(i18n.language);
     };
 
     const formatCurrency = (value: string | number) => {
@@ -311,21 +313,21 @@ export default function EditTransaction({ loaderData }: Route.ComponentProps) {
     // Show toast on success
     useEffect(() => {
         if (fetcher.state === "idle" && fetcher.data && 'success' in fetcher.data) {
-            toast.success(fetcher.data.message || "Action completed");
+            toast.success((fetcher.data as any).message || "Action completed");
         }
     }, [fetcher.state, fetcher.data]);
 
     // Check for error from action (delete validation failure)
-    const deleteError = actionData && 'error' in actionData ? actionData.error : null;
+    const deleteError = actionData && actionData.error ? t(actionData.error, { names: actionData.linkedItemNames }) : null;
 
     return (
         <PageWrapper>
             <div className="w-full max-w-2xl mx-auto px-4">
                 <div className="mb-8">
                     <h1 className="text-3xl md:text-4xl font-black text-gray-900 dark:text-white">
-                        Muokkaa tapahtumaa
+                        {t("treasury.breakdown.edit.title")}
                     </h1>
-                    <p className="text-lg text-gray-500">Edit Transaction</p>
+                    <p className="text-lg text-gray-500">{t("treasury.breakdown.edit.subtitle")}</p>
                 </div>
 
                 {/* Error display */}
@@ -335,7 +337,7 @@ export default function EditTransaction({ loaderData }: Route.ComponentProps) {
                             <span className="material-symbols-outlined text-red-600 dark:text-red-400">error</span>
                             <div>
                                 <p className="font-medium text-red-800 dark:text-red-300">
-                                    Poistaminen estetty / Deletion blocked
+                                    {t("treasury.breakdown.edit.delete_blocked")}
                                 </p>
                                 <p className="text-sm text-red-700 dark:text-red-400 mt-1">
                                     {deleteError}
@@ -350,11 +352,11 @@ export default function EditTransaction({ loaderData }: Route.ComponentProps) {
                     <div className="bg-gray-50 dark:bg-gray-900 rounded-2xl p-6 border border-gray-200 dark:border-gray-700 space-y-3">
                         <div className="flex justify-between items-start">
                             <div>
-                                <p className="text-sm text-gray-500">Päivämäärä / Date</p>
+                                <p className="text-sm text-gray-500">{t("treasury.breakdown.date")}</p>
                                 <p className="font-mono">{formatDate(transaction.date)}</p>
                             </div>
                             <div className="text-right">
-                                <Label htmlFor="amount" className="text-sm text-gray-500 block mb-1">Summa / Amount</Label>
+                                <Label htmlFor="amount" className="text-sm text-gray-500 block mb-1">{t("treasury.breakdown.amount")}</Label>
                                 <div className="flex items-center justify-end gap-1">
                                     <span className={`font-bold text-lg ${transaction.type === "expense" ? "text-red-600" : "text-green-600"}`}>
                                         {transaction.type === "expense" ? "-" : "+"}
@@ -371,7 +373,7 @@ export default function EditTransaction({ loaderData }: Route.ComponentProps) {
                             </div>
                         </div>
                         <div>
-                            <p className="text-sm text-gray-500">Vuosi / Year</p>
+                            <p className="text-sm text-gray-500">{t("treasury.year")}</p>
                             <p>{transaction.year}</p>
                         </div>
                     </div>
@@ -379,11 +381,11 @@ export default function EditTransaction({ loaderData }: Route.ComponentProps) {
                     {/* Editable Fields */}
                     <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-200 dark:border-gray-700 space-y-4">
                         <h2 className="text-lg font-bold text-gray-900 dark:text-white">
-                            Muokattavat tiedot / Editable Fields
+                            {t("treasury.breakdown.edit.editable_fields")}
                         </h2>
 
                         <div className="space-y-2">
-                            <Label htmlFor="description">Kuvaus / Description *</Label>
+                            <Label htmlFor="description">{t("treasury.breakdown.description")} *</Label>
                             <Input
                                 id="description"
                                 name="description"
@@ -393,7 +395,7 @@ export default function EditTransaction({ loaderData }: Route.ComponentProps) {
                         </div>
 
                         <div className="space-y-2">
-                            <Label htmlFor="category">Kategoria / Category</Label>
+                            <Label htmlFor="category">{t("treasury.breakdown.category")}</Label>
                             <Input
                                 id="category"
                                 name="category"
@@ -403,7 +405,7 @@ export default function EditTransaction({ loaderData }: Route.ComponentProps) {
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="space-y-2">
-                                <Label htmlFor="status">Tila / Status *</Label>
+                                <Label htmlFor="status">{t("treasury.breakdown.status")} *</Label>
                                 <Select name="status" defaultValue={transaction.status} required>
                                     <SelectTrigger>
                                         <SelectValue />
@@ -412,25 +414,25 @@ export default function EditTransaction({ loaderData }: Route.ComponentProps) {
                                         <SelectItem value="complete">
                                             <span className="flex items-center gap-2">
                                                 <span className="w-2 h-2 rounded-full bg-green-500"></span>
-                                                Valmis / Complete
+                                                {t("treasury.breakdown.statuses.complete")}
                                             </span>
                                         </SelectItem>
                                         <SelectItem value="pending">
                                             <span className="flex items-center gap-2">
                                                 <span className="w-2 h-2 rounded-full bg-yellow-500"></span>
-                                                Odottaa / Pending
+                                                {t("treasury.breakdown.statuses.pending")}
                                             </span>
                                         </SelectItem>
                                         <SelectItem value="paused">
                                             <span className="flex items-center gap-2">
                                                 <span className="w-2 h-2 rounded-full bg-gray-500"></span>
-                                                Pysäytetty / Paused
+                                                {t("treasury.breakdown.statuses.paused")}
                                             </span>
                                         </SelectItem>
                                         <SelectItem value="declined">
                                             <span className="flex items-center gap-2">
                                                 <span className="w-2 h-2 rounded-full bg-red-500"></span>
-                                                Hylätty / Declined
+                                                {t("treasury.breakdown.statuses.declined")}
                                             </span>
                                         </SelectItem>
                                     </SelectContent>
@@ -438,16 +440,16 @@ export default function EditTransaction({ loaderData }: Route.ComponentProps) {
                             </div>
 
                             <div className="space-y-2">
-                                <Label htmlFor="reimbursementStatus">Kulukorvaus / Reimbursement</Label>
+                                <Label htmlFor="reimbursementStatus">{t("treasury.reimbursements.title")}</Label>
                                 <Select name="reimbursementStatus" defaultValue={transaction.reimbursementStatus || "not_requested"}>
                                     <SelectTrigger>
                                         <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="not_requested">Ei haettu / Not Requested</SelectItem>
-                                        <SelectItem value="requested">Haettu / Requested</SelectItem>
-                                        <SelectItem value="approved">Hyväksytty / Approved</SelectItem>
-                                        <SelectItem value="declined">Hylätty / Declined</SelectItem>
+                                        <SelectItem value="not_requested">{t("treasury.breakdown.edit.reimbursement_statuses.not_requested")}</SelectItem>
+                                        <SelectItem value="requested">{t("treasury.breakdown.edit.reimbursement_statuses.requested")}</SelectItem>
+                                        <SelectItem value="approved">{t("treasury.breakdown.edit.reimbursement_statuses.approved")}</SelectItem>
+                                        <SelectItem value="declined">{t("treasury.breakdown.edit.reimbursement_statuses.declined")}</SelectItem>
                                     </SelectContent>
                                 </Select>
                             </div>
@@ -458,24 +460,24 @@ export default function EditTransaction({ loaderData }: Route.ComponentProps) {
                     {purchase && (
                         <div className="bg-blue-50 dark:bg-blue-900/20 rounded-2xl p-6 border border-blue-200 dark:border-blue-800 space-y-3">
                             <h3 className="font-bold text-blue-800 dark:text-blue-300">
-                                Linkitetty kulukorvaus / Linked Reimbursement
+                                {t("treasury.breakdown.edit.linked_reimbursement")}
                             </h3>
                             <div className="grid grid-cols-2 gap-4 text-sm">
                                 <div>
-                                    <p className="text-blue-600 dark:text-blue-400">Ostaja / Purchaser</p>
+                                    <p className="text-blue-600 dark:text-blue-400">{t("treasury.breakdown.edit.purchaser")}</p>
                                     <p className="font-medium">{purchase.purchaserName}</p>
                                 </div>
                                 <div>
-                                    <p className="text-blue-600 dark:text-blue-400">Tilinumero / IBAN</p>
+                                    <p className="text-blue-600 dark:text-blue-400">{t("treasury.breakdown.edit.iban")}</p>
                                     <p className="font-mono text-xs">{purchase.bankAccount}</p>
                                 </div>
                                 <div>
-                                    <p className="text-blue-600 dark:text-blue-400">Pöytäkirja / Minutes</p>
+                                    <p className="text-blue-600 dark:text-blue-400">{t("treasury.breakdown.edit.minutes")}</p>
                                     <p className="font-medium">{purchase.minutesId || "—"}</p>
                                 </div>
                                 <div>
-                                    <p className="text-blue-600 dark:text-blue-400">Sähköposti / Email</p>
-                                    <p className="font-medium">{purchase.emailSent ? "✓ Lähetetty" : "✗ Ei lähetetty"}</p>
+                                    <p className="text-blue-600 dark:text-blue-400">{t("treasury.breakdown.edit.email")}</p>
+                                    <p className="font-medium">{purchase.emailSent ? t("treasury.breakdown.edit.email_sent") : t("treasury.breakdown.edit.email_not_sent")}</p>
                                 </div>
                             </div>
                         </div>
@@ -492,9 +494,9 @@ export default function EditTransaction({ loaderData }: Route.ComponentProps) {
                                 availableItems={pickerItems}
                                 uniqueLocations={uniqueLocations}
                                 uniqueCategories={uniqueCategories}
-                                title="Lisättävät tavarat / Items to Add"
-                                description="Valitse tavarat jotka linkitetään tähän tapahtumaan. / Select items to link to this transaction."
-                                emptyMessage="Ei lisättäviä tavaroita / No items to add"
+                                title={t("treasury.breakdown.edit.items_to_add")}
+                                description={t("treasury.breakdown.edit.items_to_add_desc")}
+                                emptyMessage={t("treasury.breakdown.edit.no_items_to_add")}
                                 showTotal={false}
                             />
 
@@ -507,7 +509,7 @@ export default function EditTransaction({ loaderData }: Route.ComponentProps) {
                                         className="gap-2"
                                     >
                                         <span className="material-symbols-outlined">link</span>
-                                        Linkitä {pendingItems.length} tavaraa nyt / Link {pendingItems.length} items now
+                                        {t("treasury.breakdown.edit.link_items", { count: pendingItems.length })}
                                     </Button>
                                 </div>
                             )}
@@ -515,14 +517,14 @@ export default function EditTransaction({ loaderData }: Route.ComponentProps) {
 
                         {linkedItems.length === 0 && pendingItems.length === 0 ? (
                             <p className="text-gray-500 text-sm py-4 text-center">
-                                Ei linkitettyjä tavaroita / No linked items
+                                {t("treasury.breakdown.edit.no_linked_items")}
                             </p>
                         ) : (
                             <div className="space-y-2">
                                 {/* Linked items header? Or strictly separation? */}
                                 {linkedItems.length > 0 && (
                                     <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mt-4 mb-2">
-                                        Linkitetyt tavarat / Linked Items
+                                        {t("treasury.breakdown.edit.linked_items")}
                                     </h3>
                                 )}
                                 {linkedItems.map(item => (
@@ -532,7 +534,7 @@ export default function EditTransaction({ loaderData }: Route.ComponentProps) {
                                             <div>
                                                 <p className="font-medium">{item.name}</p>
                                                 <p className="text-xs text-gray-500">
-                                                    {item.quantity} kpl • {item.location}
+                                                    {item.quantity} {t("inventory.unit")} • {item.location}
                                                     {item.value && parseFloat(item.value) > 0 && (
                                                         <span className="ml-2">{formatCurrency(parseFloat(item.value) * item.quantity)}</span>
                                                     )}
@@ -561,7 +563,7 @@ export default function EditTransaction({ loaderData }: Route.ComponentProps) {
                             onClick={() => navigate(-1)}
                             className="flex-1"
                         >
-                            Peruuta / Cancel
+                            {t("treasury.breakdown.edit.cancel")}
                         </Button>
                         <Button type="submit" className="flex-1" onClick={(e) => {
                             if (pendingItems.length > 0) {
@@ -572,7 +574,7 @@ export default function EditTransaction({ loaderData }: Route.ComponentProps) {
                                 // Let's just focus on linking items first as that's the main action for this context
                             }
                         }}>
-                            {pendingItems.length > 0 ? "Tallenna linkitykset / Save Links" : "Tallenna / Save"}
+                            {pendingItems.length > 0 ? t("treasury.breakdown.edit.save_links") : t("treasury.breakdown.edit.save")}
                         </Button>
                     </div>
                 </Form>
@@ -587,20 +589,17 @@ export default function EditTransaction({ loaderData }: Route.ComponentProps) {
                                 className="w-full"
                             >
                                 <span className="material-symbols-outlined mr-2">delete</span>
-                                Poista tapahtuma / Delete Transaction
+                                {t("treasury.breakdown.edit.delete")}
                             </Button>
                         </AlertDialogTrigger>
                         <AlertDialogContent>
                             <AlertDialogHeader>
                                 <AlertDialogTitle>
-                                    Poista tapahtuma? / Delete transaction?
+                                    {t("treasury.breakdown.edit.delete_title")}
                                 </AlertDialogTitle>
                                 <AlertDialogDescription>
                                     <span className="block mb-2">
-                                        Haluatko varmasti poistaa tämän tapahtuman? Tätä toimintoa ei voi peruuttaa.
-                                    </span>
-                                    <span className="block text-sm">
-                                        Are you sure you want to delete this transaction? This action cannot be undone.
+                                        {t("treasury.breakdown.edit.delete_confirm")}
                                     </span>
                                     <span className="block mt-3 font-medium text-foreground">
                                         {transaction.description} ({formatCurrency(transaction.amount)})
@@ -608,18 +607,18 @@ export default function EditTransaction({ loaderData }: Route.ComponentProps) {
                                 </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>
-                                <AlertDialogCancel>Peruuta / Cancel</AlertDialogCancel>
+                                <AlertDialogCancel>{t("treasury.breakdown.edit.cancel")}</AlertDialogCancel>
                                 <AlertDialogAction
                                     onClick={handleDelete}
                                     className="bg-red-600 hover:bg-red-700"
                                 >
-                                    Poista / Delete
+                                    {t("treasury.breakdown.edit.delete")}
                                 </AlertDialogAction>
                             </AlertDialogFooter>
                         </AlertDialogContent>
                     </AlertDialog>
                 </div>
-            </div >
-        </PageWrapper >
+            </div>
+        </PageWrapper>
     );
 }

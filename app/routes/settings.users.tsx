@@ -1,17 +1,19 @@
-import type { Route } from "./+types/settings.users";
-import { useFetcher } from "react-router";
 import { useEffect } from "react";
-import { toast } from "sonner";
-import { requirePermission, isAdmin } from "~/lib/auth.server";
-import { getDatabase, type Role } from "~/db";
-import { PageWrapper } from "~/components/layout/page-layout";
-import { cn } from "~/lib/utils";
-import { SITE_CONFIG } from "~/lib/config.server";
 import { useTranslation } from "react-i18next";
+import { useFetcher } from "react-router";
+import { toast } from "sonner";
+import { PageWrapper } from "~/components/layout/page-layout";
+import { getDatabase, type Role } from "~/db";
+import { isAdmin, requirePermission } from "~/lib/auth.server";
+import { SITE_CONFIG } from "~/lib/config.server";
+import { cn } from "~/lib/utils";
+import type { Route } from "./+types/settings.users";
 
 export function meta({ data }: Route.MetaArgs) {
 	return [
-		{ title: `${data?.siteConfig?.name || "Portal"} - Käyttäjähallinta / Users` },
+		{
+			title: `${data?.siteConfig?.name || "Portal"} - Käyttäjähallinta / Users`,
+		},
 		{ name: "robots", content: "noindex" },
 	];
 }
@@ -20,7 +22,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 	// Throw 404 for unauthorized access to hide admin routes
 	try {
 		await requirePermission(request, "settings:users", getDatabase);
-	} catch (error) {
+	} catch (_error) {
 		throw new Response("Not Found", { status: 404 });
 	}
 
@@ -31,8 +33,8 @@ export async function loader({ request }: Route.LoaderArgs) {
 	]);
 
 	// Enrich users with role info
-	const usersWithRoles = users.map(user => {
-		const userRole = roles.find(r => r.id === user.roleId);
+	const usersWithRoles = users.map((user) => {
+		const userRole = roles.find((r) => r.id === user.roleId);
 		return {
 			...user,
 			roleName: userRole?.name || "Unknown",
@@ -52,7 +54,7 @@ export async function action({ request }: Route.ActionArgs) {
 	// Check permission - return error JSON instead of throwing for fetcher compatibility
 	try {
 		await requirePermission(request, "users:manage_roles", getDatabase);
-	} catch (error) {
+	} catch (_error) {
 		return { success: false, error: "unauthorized" };
 	}
 
@@ -97,7 +99,6 @@ export default function AdminUsers({ loaderData }: Route.ComponentProps) {
 						</h1>
 					</div>
 				</div>
-
 
 				{/* Users Table */}
 				<div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
@@ -164,11 +165,14 @@ interface UserRowProps {
 function UserRow({ user, roles }: UserRowProps) {
 	const fetcher = useFetcher<{ success: boolean; error?: string }>();
 	const { t, i18n } = useTranslation();
-	const formattedDate = new Date(user.createdAt).toLocaleDateString(i18n.language, {
-		day: "numeric",
-		month: "short",
-		year: "numeric",
-	});
+	const formattedDate = new Date(user.createdAt).toLocaleDateString(
+		i18n.language,
+		{
+			day: "numeric",
+			month: "short",
+			year: "numeric",
+		},
+	);
 
 	// Show toast when role update completes
 	useEffect(() => {
@@ -183,7 +187,7 @@ function UserRow({ user, roles }: UserRowProps) {
 				}
 			}
 		}
-	}, [fetcher.state, fetcher.data]);
+	}, [fetcher.state, fetcher.data, t]);
 
 	return (
 		<tr className="hover:bg-gray-50 dark:hover:bg-gray-900/50 transition-colors">
@@ -205,10 +209,12 @@ function UserRow({ user, roles }: UserRowProps) {
 			</td>
 			<td className="px-4 py-4">
 				{user.isSuperAdmin ? (
-					<div className={cn(
-						"px-3 py-1.5 rounded-lg text-sm font-medium border-0 inline-flex items-center gap-1.5 text-white opacity-90 cursor-not-allowed",
-						user.roleColor
-					)}>
+					<div
+						className={cn(
+							"px-3 py-1.5 rounded-lg text-sm font-medium border-0 inline-flex items-center gap-1.5 text-white opacity-90 cursor-not-allowed",
+							user.roleColor,
+						)}
+					>
 						<span className="material-symbols-outlined text-base">lock</span>
 						{user.roleName}
 					</div>
@@ -223,7 +229,7 @@ function UserRow({ user, roles }: UserRowProps) {
 							className={cn(
 								"px-3 py-1.5 rounded-lg text-sm font-medium border-0 cursor-pointer transition-colors text-white",
 								user.roleColor,
-								fetcher.state !== "idle" && "opacity-50 cursor-wait"
+								fetcher.state !== "idle" && "opacity-50 cursor-wait",
 							)}
 						>
 							{roles.map((role) => (

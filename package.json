@@ -11,7 +11,11 @@
 		"db:migrate": "drizzle-kit migrate",
 		"db:push": "drizzle-kit push",
 		"db:reset": "bun run scripts/reset-db.ts",
-		"db:studio": "drizzle-kit studio"
+		"db:studio": "drizzle-kit studio",
+		"lint": "biome check .",
+		"lint:fix": "biome check --write .",
+		"format": "biome format .",
+		"format:fix": "biome format --write ."
 	},
 	"dependencies": {
 		"@neondatabase/serverless": "^1.0.2",

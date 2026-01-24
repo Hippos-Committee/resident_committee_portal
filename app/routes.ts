@@ -9,7 +9,10 @@ export default [
 	route("social/new", "routes/social.new.tsx"),
 	route("treasury", "routes/treasury.tsx"),
 	route("treasury/breakdown", "routes/treasury.breakdown.tsx"),
-	route("treasury/breakdown/:transactionId/edit", "routes/treasury.breakdown.$transactionId.edit.tsx"),
+	route(
+		"treasury/breakdown/:transactionId/edit",
+		"routes/treasury.breakdown.$transactionId.edit.tsx",
+	),
 	route("treasury/reimbursements", "routes/treasury.reimbursements.tsx"),
 	route("treasury/reimbursement/new", "routes/treasury.reimbursement.new.tsx"),
 	route("treasury/new", "routes/treasury.new.tsx"),
@@ -38,4 +41,3 @@ export default [
 	route("api/treasury/export", "routes/api.treasury.export.tsx"),
 	route("api/set-language", "routes/api.set-language.ts"),
 ] satisfies RouteConfig;
-

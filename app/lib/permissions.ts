@@ -186,6 +186,18 @@ export const PERMISSIONS = {
 		category: "Events",
 	},
 
+	// Forms
+	"forms:read": {
+		description: "View form responses and analytics",
+		descriptionFi: "Näytä lomaketiedot ja analytiikka",
+		category: "Forms",
+	},
+	"forms:export": {
+		description: "Export form data to CSV",
+		descriptionFi: "Vie lomaketiedot CSV-tiedostoon",
+		category: "Forms",
+	},
+
 	// Profile
 	"profile:read:own": {
 		description: "View own profile",
@@ -234,6 +246,11 @@ export const PERMISSIONS = {
 	"settings:reimbursements": {
 		description: "Access reimbursement settings (AI, keywords)",
 		descriptionFi: "Pääsy korvausasetusten hallintaan (AI, avainsanat)",
+		category: "Settings",
+	},
+	"settings:analytics": {
+		description: "Access analytics settings (AI models)",
+		descriptionFi: "Pääsy analytiikka-asetuksiin (tekoälymallit)",
 		category: "Settings",
 	},
 } as const;

@@ -33,9 +33,14 @@ export default [
 	route("settings/users", "routes/settings.users.tsx"),
 	route("settings/roles", "routes/settings.roles.tsx"),
 	route("settings/reimbursements", "routes/settings.reimbursements.tsx"),
-	// API routes
-	route("api/risc/receiver", "routes/api.risc.receiver.tsx"),
-	route("api/inventory/export", "routes/api.inventory.export.tsx"),
+	route("settings/analytics", "routes/settings.analytics.tsx"),
+
+	// Analytics
+	route("analytics", "routes/analytics.tsx"),
+
+	// API Routes
+	route("api/analytics/export", "routes/api.analytics.export.tsx"),
+	route("api/analytics/analyze", "routes/api.analytics.analyze.tsx"),
 	route("api/inventory/import", "routes/api.inventory.import.tsx"),
 	route("api/webhooks/resend", "routes/api.webhooks.resend.tsx"),
 	route("api/treasury/export", "routes/api.treasury.export.tsx"),

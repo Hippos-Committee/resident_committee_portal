@@ -56,6 +56,7 @@ export function Navigation({
 			"settings:users",
 			"settings:roles",
 			"settings:reimbursements",
+			"settings:analytics",
 			"settings:general",
 		]);
 
@@ -287,6 +288,26 @@ export function Navigation({
 											</span>
 											<span className="text-sm font-bold">
 												{t("nav.reimbursements")}
+											</span>
+										</Link>
+									)}
+									{hasPermission("settings:analytics") && (
+										<Link
+											to="/settings/analytics"
+											onClick={() => setMobileMenuOpen(false)}
+											className={cn(
+												"flex items-center gap-3 px-4 py-3 rounded-xl transition-all",
+												"hover:bg-primary/10 hover:text-primary",
+												pathname === "/settings/analytics"
+													? "text-primary bg-primary/10"
+													: "text-gray-500 dark:text-gray-400",
+											)}
+										>
+											<span className="material-symbols-outlined text-2xl">
+												bar_chart
+											</span>
+											<span className="text-sm font-bold">
+												Analytics
 											</span>
 										</Link>
 									)}
@@ -526,6 +547,21 @@ export function Navigation({
 										</Link>
 									</DropdownMenuItem>
 								</>
+							)}
+							{hasPermission("settings:analytics") && (
+								<DropdownMenuItem asChild>
+									<Link
+										to="/settings/analytics"
+										className="flex items-center gap-2 cursor-pointer"
+									>
+										<span className="material-symbols-outlined text-lg">
+											bar_chart
+										</span>
+										<div>
+											<p className="font-medium">Analytics</p>
+										</div>
+									</Link>
+								</DropdownMenuItem>
 							)}
 						</DropdownMenuContent>
 					</DropdownMenu>

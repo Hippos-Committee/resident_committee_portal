@@ -14,6 +14,7 @@ export const SETTINGS_KEYS = {
 	AI_PARSING_ENABLED: "ai_parsing_enabled",
 	APPROVAL_KEYWORDS: "approval_keywords",
 	REJECTION_KEYWORDS: "rejection_keywords",
+	ANALYTICS_AI_MODEL: "analytics_ai_model",
 } as const;
 
 // Default keywords (Finnish + English)
@@ -96,6 +97,54 @@ export async function getAvailableModels(
 			.sort((a, b) => a.pricing.prompt - b.pricing.prompt);
 	} catch (error) {
 		console.error("[OpenRouter] Error fetching models:", error);
+		return [];
+	}
+}
+
+/**
+ * Analyze text list and count word frequencies using AI
+ */
+export async function analyzeTextFrequencies(
+	texts: string[],
+	apiKey: string,
+	modelId: string,
+): Promise<Array<{ name: string; value: number }>> {
+	try {
+		const openrouter = createOpenRouter({
+			apiKey,
+		});
+
+		// Limit input size to avoid token limits
+		const sampleTexts = texts.slice(0, 50).join("\n");
+
+		const { text } = await generateText({
+			model: openrouter(modelId),
+			prompt: `Analyze the following list of text responses and count the frequency of key terms or themes.
+Ignore common stop words. Group similar concepts (e.g. "bus", "transport" -> "Transport").
+Return ONLY a JSON array of objects with "name" and "value" properties. Sort by frequency descending.
+
+Text list:
+"""
+${sampleTexts}
+"""
+
+Example response format:
+[{"name": "Transport", "value": 15}, {"name": "Food", "value": 8}]`,
+		});
+
+		// Clean up response to ensure valid JSON
+		const jsonStr = text.replace(/```json/g, "").replace(/```/g, "").trim();
+		const result = JSON.parse(jsonStr);
+
+		if (Array.isArray(result)) {
+			return result.map(item => ({
+				name: String(item.name),
+				value: Number(item.value)
+			}));
+		}
+		return [];
+	} catch (error) {
+		console.error("[OpenRouter] AI analysis error:", error);
 		return [];
 	}
 }

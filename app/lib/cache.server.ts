@@ -9,6 +9,8 @@ export const CACHE_TTL = {
 	MINUTES: 3 * 60 * 60 * 1000, // 3 hours
 	SOCIAL_CHANNELS: 3 * 60 * 60 * 1000, // 3 hours
 	INVENTORY: 3 * 60 * 60 * 1000, // 3 hours
+	ANALYTICS_LIST: 5 * 60 * 1000, // 5 minutes
+	ANALYTICS_DATA: 5 * 60 * 1000, // 5 minutes
 };
 
 interface CacheEntry<T> {
@@ -71,4 +73,6 @@ export const CACHE_KEYS = {
 	MINUTES: "minutes",
 	SOCIAL_CHANNELS: "social_channels",
 	INVENTORY: "inventory",
+	ANALYTICS_LIST: "analytics_list",
+	ANALYTICS_DATA_PREFIX: "analytics_data_", // Append sheetId
 };

@@ -44,6 +44,12 @@ export const NAV_ITEMS: NavItem[] = [
 		permission: "social:read",
 		infoReelDuration: 16000,
 	},
+	{
+		path: "/analytics",
+		icon: "analytics",
+		i18nKey: "nav.analytics",
+		permission: "forms:read",
+	},
 	// Auth items - shown conditionally
 	{
 		path: "/auth/login",

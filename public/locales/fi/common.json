@@ -613,5 +613,21 @@
 			"label": "Tapahtuma",
 			"placeholder": "Hae nimellä..."
 		}
+	},
+	"email": {
+		"reimbursement": {
+			"subject": "Kulukorvaus pyyntö",
+			"title": "Kulukorvaus pyyntö",
+			"item": "Tavara",
+			"amount": "Summa",
+			"purchaser": "Ostaja",
+			"bank_account": "Tilinumero",
+			"minutes": "Pöytäkirja",
+			"receipts": "Kuitit",
+			"notes": "Lisätiedot",
+			"attached": "liitteenä",
+			"not_specified": "Ei määritetty",
+			"reply_instruction": "Vastaa tähän viestiin hyväksyäksesi tai hylätäksesi pyynnön."
+		}
 	}
 }

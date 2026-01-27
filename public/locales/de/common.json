@@ -85,5 +85,21 @@
 			"free": "Frei",
 			"none": "Keine"
 		}
+	},
+	"email": {
+		"reimbursement": {
+			"subject": "Erstattungsantrag",
+			"title": "Erstattungsantrag",
+			"item": "Artikel",
+			"amount": "Betrag",
+			"purchaser": "Käufer",
+			"bank_account": "Bankkonto",
+			"minutes": "Protokoll",
+			"receipts": "Quittungen",
+			"notes": "Notizen",
+			"attached": "angehängt",
+			"not_specified": "Nicht angegeben",
+			"reply_instruction": "Antworten Sie auf diese E-Mail, um den Antrag zu genehmigen oder abzulehnen."
+		}
 	}
 }

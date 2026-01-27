@@ -1780,6 +1780,7 @@ export async function deleteSubmission(rowIndex: number): Promise<boolean> {
 /**
  * Download a file from Google Drive as base64 string
  * Used for attaching minutes PDFs to reimbursement emails
+ * Handles both native files (PDFs, images) and Google Docs (exports to PDF)
  */
 export async function getFileAsBase64(fileId: string): Promise<string | null> {
 	if (!fileId) {
@@ -1791,19 +1792,51 @@ export async function getFileAsBase64(fileId: string): Promise<string | null> {
 	const accessToken = await getServiceAccountAccessToken();
 
 	try {
-		let url: string;
-		let headers: HeadersInit = {};
+		const headers: HeadersInit = accessToken
+			? { Authorization: `Bearer ${accessToken}` }
+			: {};
 
-		if (accessToken) {
-			// Use service account auth for potentially private files
-			url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`;
-			headers = { Authorization: `Bearer ${accessToken}` };
-		} else {
-			// Fallback to API key for public files
-			url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&key=${config.apiKey}`;
+		// First, get file metadata to check if it's a Google Docs file
+		const metadataUrl = accessToken
+			? `https://www.googleapis.com/drive/v3/files/${fileId}?fields=mimeType,name`
+			: `https://www.googleapis.com/drive/v3/files/${fileId}?fields=mimeType,name&key=${config.apiKey}`;
+
+		const metaRes = await fetch(metadataUrl, { headers });
+		if (!metaRes.ok) {
+			console.error(
+				`[getFileAsBase64] Failed to get file metadata ${fileId}: ${metaRes.status}`,
+			);
+			return null;
 		}
 
-		const res = await fetch(url, { headers });
+		const metadata = (await metaRes.json()) as { mimeType: string; name: string };
+		console.log(
+			`[getFileAsBase64] File ${fileId} is ${metadata.mimeType} (${metadata.name})`,
+		);
+
+		let downloadUrl: string;
+
+		// Google Docs/Sheets/Slides need to be exported, not downloaded directly
+		if (metadata.mimeType === "application/vnd.google-apps.document") {
+			// Export Google Doc as PDF
+			downloadUrl = accessToken
+				? `https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=application/pdf`
+				: `https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=application/pdf&key=${config.apiKey}`;
+			console.log(`[getFileAsBase64] Exporting Google Doc as PDF`);
+		} else if (metadata.mimeType === "application/vnd.google-apps.spreadsheet") {
+			// Export Google Sheets as PDF
+			downloadUrl = accessToken
+				? `https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=application/pdf`
+				: `https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=application/pdf&key=${config.apiKey}`;
+			console.log(`[getFileAsBase64] Exporting Google Sheet as PDF`);
+		} else {
+			// Regular file - download directly
+			downloadUrl = accessToken
+				? `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`
+				: `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&key=${config.apiKey}`;
+		}
+
+		const res = await fetch(downloadUrl, { headers });
 
 		if (!res.ok) {
 			console.error(

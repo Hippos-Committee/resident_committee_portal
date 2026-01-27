@@ -1,5 +1,11 @@
 import { useTranslation } from "react-i18next";
-import { Form, Link, useRouteLoaderData, useSearchParams } from "react-router";
+import {
+	Form,
+	Link,
+	useNavigate,
+	useRouteLoaderData,
+	useSearchParams,
+} from "react-router";
 import { PageWrapper } from "~/components/layout/page-layout";
 import { Button } from "~/components/ui/button";
 import {
@@ -10,6 +16,7 @@ import {
 	TableHeader,
 	TableRow,
 } from "~/components/ui/table";
+import { useReimbursementTemplate } from "~/contexts/reimbursement-template-context";
 import {
 	getDatabase,
 	type InventoryItem,
@@ -162,6 +169,8 @@ export default function BudgetReimbursements({
 		rootData?.user?.roleName === "Admin" ||
 		rootData?.user?.roleName === "Board Member";
 	const { t, i18n } = useTranslation();
+	const navigate = useNavigate();
+	const { setTemplate } = useReimbursementTemplate();
 
 	const formatCurrency = (value: number | string) => {
 		const num = typeof value === "string" ? parseFloat(value) : value;
@@ -181,6 +190,17 @@ export default function BudgetReimbursements({
 			params.set(key, value);
 		}
 		setSearchParams(params);
+	};
+
+	const handleUseAsTemplate = (purchase: Purchase) => {
+		setTemplate({
+			description: purchase.description || "",
+			amount: purchase.amount,
+			purchaserName: purchase.purchaserName,
+			bankAccount: purchase.bankAccount,
+			notes: purchase.notes || undefined,
+		});
+		navigate("/treasury/reimbursement/new");
 	};
 
 	if (!isStaff) {
@@ -448,42 +468,56 @@ export default function BudgetReimbursements({
 													)}
 												</TableCell>
 												<TableCell>
-													{canDelete && (
-														<Form method="post" className="inline-block">
-															<input
-																type="hidden"
-																name="_action"
-																value="delete"
-															/>
-															<input
-																type="hidden"
-																name="purchaseId"
-																value={purchase.id}
-															/>
-															<Button
-																type="submit"
-																variant="ghost"
-																size="icon"
-																onClick={(e) => {
-																	if (
-																		!confirm(
-																			t(
-																				"treasury.reimbursements.delete_confirm",
-																			),
-																		)
-																	) {
-																		e.preventDefault();
-																	}
-																}}
-																className="text-red-500 hover:text-red-700 h-8 w-8"
-																title={t("settings.common.delete")}
-															>
-																<span className="material-symbols-outlined text-lg">
-																	delete
-																</span>
-															</Button>
-														</Form>
-													)}
+													<div className="flex gap-1">
+														<Button
+															type="button"
+															variant="ghost"
+															size="icon"
+															onClick={() => handleUseAsTemplate(purchase)}
+															className="text-gray-500 hover:text-primary h-8 w-8"
+															title={t("treasury.reimbursements.use_as_template")}
+														>
+															<span className="material-symbols-outlined text-lg">
+																content_copy
+															</span>
+														</Button>
+														{canDelete && (
+															<Form method="post" className="inline-block">
+																<input
+																	type="hidden"
+																	name="_action"
+																	value="delete"
+																/>
+																<input
+																	type="hidden"
+																	name="purchaseId"
+																	value={purchase.id}
+																/>
+																<Button
+																	type="submit"
+																	variant="ghost"
+																	size="icon"
+																	onClick={(e) => {
+																		if (
+																			!confirm(
+																				t(
+																					"treasury.reimbursements.delete_confirm",
+																				),
+																			)
+																		) {
+																			e.preventDefault();
+																		}
+																	}}
+																	className="text-red-500 hover:text-red-700 h-8 w-8"
+																	title={t("settings.common.delete")}
+																>
+																	<span className="material-symbols-outlined text-lg">
+																		delete
+																	</span>
+																</Button>
+															</Form>
+														)}
+													</div>
 												</TableCell>
 											</TableRow>
 										);

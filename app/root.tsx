@@ -120,6 +120,7 @@ import { Navigation } from "./components/navigation";
 import { InfoReelProvider, useInfoReel } from "./contexts/info-reel-context";
 import { LanguageProvider, useLanguage } from "./contexts/language-context";
 import { NewTransactionProvider } from "./contexts/new-transaction-context";
+import { ReimbursementTemplateProvider } from "./contexts/reimbursement-template-context";
 import { UserProvider } from "./contexts/user-context";
 import { queryClient } from "./lib/query-client";
 
@@ -160,11 +161,13 @@ export default function App() {
 		<QueryClientProvider client={queryClient}>
 			<UserProvider user={user}>
 				<NewTransactionProvider>
-					<InfoReelProvider>
-						<LanguageProvider>
-							<AppContent siteConfig={siteConfig} />
-						</LanguageProvider>
-					</InfoReelProvider>
+					<ReimbursementTemplateProvider>
+						<InfoReelProvider>
+							<LanguageProvider>
+								<AppContent siteConfig={siteConfig} />
+							</LanguageProvider>
+						</InfoReelProvider>
+					</ReimbursementTemplateProvider>
 				</NewTransactionProvider>
 			</UserProvider>
 			<Toaster richColors position="top-center" />

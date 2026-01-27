@@ -43,6 +43,7 @@ export default [
 	route("api/minutes", "routes/api.minutes.tsx"),
 	route("api/analytics/export", "routes/api.analytics.export.tsx"),
 	route("api/analytics/analyze", "routes/api.analytics.analyze.tsx"),
+	route("api/inventory/export", "routes/api.inventory.export.tsx"),
 	route("api/inventory/import", "routes/api.inventory.import.tsx"),
 	route("api/webhooks/resend", "routes/api.webhooks.resend.tsx"),
 	route("api/treasury/export", "routes/api.treasury.export.tsx"),

@@ -141,6 +141,7 @@
 			"email_sent": "Sähköposti lähetetty",
 			"reply_received": "Vastaus vastaanotettu",
 			"delete_confirm": "Haluatko varmasti poistaa tämän kulukorvauksen?",
+			"use_as_template": "Käytä pohjana",
 			"access_denied": "Ei käyttöoikeutta",
 			"all": "Kaikki",
 			"statuses": {

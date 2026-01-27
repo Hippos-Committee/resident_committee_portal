@@ -140,6 +140,7 @@
 			"email_sent": "E-post skickad",
 			"reply_received": "Svar mottaget",
 			"delete_confirm": "Är du säker på att du vill ta bort detta utlägg?",
+			"use_as_template": "Använd som mall",
 			"access_denied": "Åtkomst nekad",
 			"all": "Alla",
 			"statuses": {

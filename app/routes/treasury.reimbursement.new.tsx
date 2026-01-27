@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Form, redirect, useNavigate, useNavigation } from "react-router";
 import { PageWrapper } from "~/components/layout/page-layout";
@@ -10,6 +10,7 @@ import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
 import { Input } from "~/components/ui/input";
 import { Label } from "~/components/ui/label";
+import { useReimbursementTemplate } from "~/contexts/reimbursement-template-context";
 import { getDatabase, type NewInventoryItem, type NewPurchase } from "~/db";
 import { requirePermission } from "~/lib/auth.server";
 import { clearCache } from "~/lib/cache.server";
@@ -242,10 +243,28 @@ export default function NewReimbursement({ loaderData }: Route.ComponentProps) {
 	const navigate = useNavigate();
 	const [addToInventory, setAddToInventory] = useState(false);
 	const [descriptionValue, setDescriptionValue] = useState("");
+	const [amountValue, setAmountValue] = useState("");
+	const [purchaserNameValue, setPurchaserNameValue] = useState("");
+	const [bankAccountValue, setBankAccountValue] = useState("");
+	const [notesValue, setNotesValue] = useState("");
 	const { t } = useTranslation();
+	const { template, clearTemplate, isHydrated } = useReimbursementTemplate();
 
 	const navigation = useNavigation();
 	const isSubmitting = navigation.state === "submitting";
+
+	// Pre-fill from template after hydration
+	useEffect(() => {
+		if (isHydrated && template) {
+			setDescriptionValue(template.description);
+			setAmountValue(template.amount);
+			setPurchaserNameValue(template.purchaserName);
+			setBankAccountValue(template.bankAccount);
+			setNotesValue(template.notes || "");
+			// Clear template after applying to prevent re-applying on page refresh
+			clearTemplate();
+		}
+	}, [isHydrated, template, clearTemplate]);
 
 	return (
 		<PageWrapper>
@@ -294,6 +313,8 @@ export default function NewReimbursement({ loaderData }: Route.ComponentProps) {
 								min="0"
 								required
 								placeholder="0.00"
+								value={amountValue}
+								onChange={(e) => setAmountValue(e.target.value)}
 							/>
 						</div>
 					</div>
@@ -310,6 +331,9 @@ export default function NewReimbursement({ loaderData }: Route.ComponentProps) {
 							showNotes={true}
 							showEmailWarning={true}
 							required={true}
+							initialPurchaserName={purchaserNameValue}
+							initialBankAccount={bankAccountValue}
+							initialNotes={notesValue}
 						/>
 					</div>
 

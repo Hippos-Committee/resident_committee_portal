@@ -56,6 +56,12 @@ export interface ReimbursementFormProps {
 	className?: string;
 	/** Whether all fields are required (default: true) */
 	required?: boolean;
+	/** Initial purchaser name (for template pre-fill) */
+	initialPurchaserName?: string;
+	/** Initial bank account (for template pre-fill) */
+	initialBankAccount?: string;
+	/** Initial notes (for template pre-fill) */
+	initialNotes?: string;
 }
 
 export interface ReimbursementFormData {
@@ -84,6 +90,9 @@ export function ReimbursementForm({
 	showEmailWarning = true,
 	className = "",
 	required = true,
+	initialPurchaserName = "",
+	initialBankAccount = "",
+	initialNotes = "",
 }: ReimbursementFormProps) {
 	const fetcher = useFetcher();
 	const minutesFetcher = useFetcher<{ minutes: MinuteFile[] }>();
@@ -255,6 +264,7 @@ export function ReimbursementForm({
 						id="purchaserName"
 						name="purchaserName"
 						required={required}
+						defaultValue={initialPurchaserName}
 						placeholder={t("treasury.new_reimbursement.purchaser_placeholder")}
 					/>
 				</div>
@@ -266,6 +276,7 @@ export function ReimbursementForm({
 						id="bankAccount"
 						name="bankAccount"
 						required={required}
+						defaultValue={initialBankAccount}
 						placeholder="FI12 3456 7890 1234 56"
 					/>
 				</div>
@@ -328,6 +339,7 @@ export function ReimbursementForm({
 						name="notes"
 						className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring min-h-[80px]"
 						placeholder={t("treasury.new_reimbursement.notes_placeholder")}
+						defaultValue={initialNotes}
 					/>
 				</div>
 			)}

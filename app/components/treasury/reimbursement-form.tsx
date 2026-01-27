@@ -313,16 +313,7 @@ export function ReimbursementForm({
 					name="minutesName"
 					value={selectedMinutes?.name || ""}
 				/>
-				<input
-					type="hidden"
-					name="minutesUrl"
-					value={
-						selectedMinutes?.url ||
-						(selectedMinutes?.id
-							? `https://drive.google.com/file/d/${selectedMinutes.id}/view`
-							: "")
-					}
-				/>
+				{/* minutesUrl removed - files are attached instead of linked */}
 				<p className="text-xs text-gray-500">
 					{t("treasury.new_reimbursement.minutes_help")}
 				</p>

@@ -612,5 +612,21 @@
 			"label": "Evenemang",
 			"placeholder": "Sök på namn..."
 		}
+	},
+	"email": {
+		"reimbursement": {
+			"subject": "Ersättningsbegäran",
+			"title": "Ersättningsbegäran",
+			"item": "Vara",
+			"amount": "Belopp",
+			"purchaser": "Köpare",
+			"bank_account": "Bankkonto",
+			"minutes": "Protokoll",
+			"receipts": "Kvitton",
+			"notes": "Anteckningar",
+			"attached": "bifogad",
+			"not_specified": "Ej specificerat",
+			"reply_instruction": "Svara på detta e-postmeddelande för att godkänna eller avvisa begäran."
+		}
 	}
 }

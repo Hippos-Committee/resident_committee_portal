@@ -295,12 +295,7 @@ export async function action({ request }: Route.ActionArgs) {
 		const bankAccount = formData.get("bankAccount") as string;
 		const minutesId = formData.get("minutesId") as string;
 		const minutesName = formData.get("minutesName") as string;
-		let minutesUrl = formData.get("minutesUrl") as string;
-
-		// Ensure we have a valid URL for the minutes
-		if (!minutesUrl && minutesId) {
-			minutesUrl = `https://drive.google.com/file/d/${minutesId}/view`;
-		}
+		// minutesUrl removed - files are attached instead of linked
 
 		const notes = formData.get("notes") as string;
 
@@ -348,7 +343,6 @@ export async function action({ request }: Route.ActionArgs) {
 						bankAccount,
 						minutesReference:
 							minutesName || minutesId || "Ei määritetty / Not specified",
-						minutesUrl,
 						notes,
 						receiptLinks: receiptLinks.length > 0 ? receiptLinks : undefined,
 					},

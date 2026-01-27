@@ -611,5 +611,21 @@
 			"label": "Event",
 			"placeholder": "Search by name..."
 		}
+	},
+	"email": {
+		"reimbursement": {
+			"subject": "Reimbursement Request",
+			"title": "Reimbursement Request",
+			"item": "Item",
+			"amount": "Amount",
+			"purchaser": "Purchaser",
+			"bank_account": "Bank Account",
+			"minutes": "Minutes",
+			"receipts": "Receipts",
+			"notes": "Notes",
+			"attached": "attached",
+			"not_specified": "Not specified",
+			"reply_instruction": "Reply to this email to approve or reject the request."
+		}
 	}
 }

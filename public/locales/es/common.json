@@ -49,5 +49,21 @@
 				"title": "Enviar Preguntas"
 			}
 		}
+	},
+	"email": {
+		"reimbursement": {
+			"subject": "Solicitud de Reembolso",
+			"title": "Solicitud de Reembolso",
+			"item": "Artículo",
+			"amount": "Importe",
+			"purchaser": "Comprador",
+			"bank_account": "Cuenta Bancaria",
+			"minutes": "Acta",
+			"receipts": "Recibos",
+			"notes": "Notas",
+			"attached": "adjunto",
+			"not_specified": "No especificado",
+			"reply_instruction": "Responda a este correo para aprobar o rechazar la solicitud."
+		}
 	}
 }

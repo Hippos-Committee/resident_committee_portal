@@ -10,8 +10,11 @@
  * - RESEND_WEBHOOK_SECRET: Secret for verifying webhook signatures
  */
 
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { Resend } from "resend";
 import { getFileAsBase64 } from "./google.server";
+import { getSystemLanguageDefaults } from "./settings.server";
 
 interface EmailConfig {
 	resendApiKey: string;
@@ -37,6 +40,69 @@ console.log("[Email Config]", {
 	webhookSecret: emailConfig.webhookSecret ? "SET" : "NOT_CONFIGURED",
 });
 
+// Cache for loaded translations
+const translationCache: Record<string, Record<string, unknown>> = {};
+
+/**
+ * Load translations for a specific language
+ */
+function loadTranslations(lang: string): Record<string, unknown> {
+	if (translationCache[lang]) {
+		return translationCache[lang];
+	}
+
+	try {
+		const filePath = resolve(`./public/locales/${lang}/common.json`);
+		const content = readFileSync(filePath, "utf-8");
+		translationCache[lang] = JSON.parse(content);
+		return translationCache[lang];
+	} catch (error) {
+		console.warn(`[loadTranslations] Failed to load ${lang}, falling back to fi`);
+		if (lang !== "fi") {
+			return loadTranslations("fi");
+		}
+		return {};
+	}
+}
+
+/**
+ * Get a nested translation value
+ */
+function getTranslation(translations: Record<string, unknown>, key: string): string {
+	const keys = key.split(".");
+	let value: unknown = translations;
+	for (const k of keys) {
+		if (value && typeof value === "object" && k in value) {
+			value = (value as Record<string, unknown>)[k];
+		} else {
+			return key; // Return key if not found
+		}
+	}
+	return typeof value === "string" ? value : key;
+}
+
+/**
+ * Get bilingual text for email (primary / secondary)
+ */
+function bilingualText(
+	primaryLang: string,
+	secondaryLang: string,
+	key: string,
+): string {
+	const primaryTranslations = loadTranslations(primaryLang);
+	const secondaryTranslations = loadTranslations(secondaryLang);
+	
+	const primary = getTranslation(primaryTranslations, key);
+	const secondary = getTranslation(secondaryTranslations, key);
+	
+	// If same language or same translation, return just one
+	if (primaryLang === secondaryLang || primary === secondary) {
+		return primary;
+	}
+	
+	return `${primary} / ${secondary}`;
+}
+
 interface ReceiptLink {
 	id: string;
 	name: string;
@@ -49,7 +115,7 @@ interface ReimbursementEmailData {
 	purchaserName: string;
 	bankAccount: string;
 	minutesReference: string;
-	minutesUrl?: string;
+	// minutesUrl removed - files are attached instead of linked
 	notes?: string;
 	receiptLinks?: ReceiptLink[];
 }
@@ -162,7 +228,7 @@ export async function parseReimbursementReply(
  * Now returns message ID for tracking replies
  *
  * Receipt files are stored in Google Drive and attached when available.
- * Links remain as a fallback for recipients that prefer to open in Drive.
+ * Uses app's default language settings for bilingual email content.
  */
 export async function sendReimbursementEmail(
 	data: ReimbursementEmailData,
@@ -180,42 +246,55 @@ export async function sendReimbursementEmail(
 		return { success: false, error: "Missing RESEND_API_KEY" };
 	}
 
+	// Get app's default language settings
+	const systemLanguages = await getSystemLanguageDefaults();
+	const primaryLang = systemLanguages.primary;
+	const secondaryLang = systemLanguages.secondary;
+
+	// Helper to get bilingual text
+	const t = (key: string) => bilingualText(primaryLang, secondaryLang, key);
+
 	try {
 		const resend = new Resend(emailConfig.resendApiKey);
 
-		const subject = `Kulukorvaus / Reimbursement: ${data.itemName} (${data.itemValue} €)`;
+		const subject = `${t("email.reimbursement.subject")}: ${data.itemName} (${data.itemValue} €)`;
 
 		// Generate reply-to address for this specific purchase
 		const replyTo = getReplyToAddress(purchaseId);
 
-		// Build receipt links HTML
-		const receiptLinksHtml =
+		// Build receipt list HTML (no links, files are attached)
+		const receiptListHtml =
 			data.receiptLinks && data.receiptLinks.length > 0
 				? `<tr>
-                <td style="padding: 8px; border: 1px solid #ddd; vertical-align: top;"><strong>Kuitit / Receipts:</strong></td>
+                <td style="padding: 8px; border: 1px solid #ddd; vertical-align: top;"><strong>${t("email.reimbursement.receipts")}:</strong></td>
                 <td style="padding: 8px; border: 1px solid #ddd;">
                     ${data.receiptLinks
 											.map(
 												(r) =>
-													`<a href="${r.url}" target="_blank" style="color: #2563eb; text-decoration: underline; display: block; margin-bottom: 4px;">📄 ${r.name}</a>`,
+													`<span style="display: block; margin-bottom: 4px;">📄 ${r.name} <em style="color: #666;">(${t("email.reimbursement.attached")})</em></span>`,
 											)
 											.join("")}
                 </td>
                </tr>`
 				: "";
 
+		// Minutes reference - show filename with "attached" note (no link)
+		const minutesHtml = data.minutesReference
+			? `${data.minutesReference} <em style="color: #666;">(${t("email.reimbursement.attached")})</em>`
+			: t("email.reimbursement.not_specified");
+
 		const htmlBody = `
-            <h2>Kulukorvaus pyyntö / Reimbursement Request</h2>
+            <h2>${t("email.reimbursement.title")}</h2>
             <table style="border-collapse: collapse; width: 100%; max-width: 600px;">
-                <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Tavara / Item:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${data.itemName}</td></tr>
-                <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Summa / Amount:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${data.itemValue} €</td></tr>
-                <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Ostaja / Purchaser:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${data.purchaserName}</td></tr>
-                <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Tilinumero / Bank Account:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${data.bankAccount}</td></tr>
-                <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Pöytäkirja / Minutes:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${data.minutesUrl ? `<a href="${data.minutesUrl}" target="_blank" style="color: #2563eb; text-decoration: underline;">${data.minutesReference}</a>` : data.minutesReference}</td></tr>
-                ${receiptLinksHtml}
-                ${data.notes ? `<tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Lisätiedot / Notes:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${data.notes}</td></tr>` : ""}
+                <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>${t("email.reimbursement.item")}:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${data.itemName}</td></tr>
+                <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>${t("email.reimbursement.amount")}:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${data.itemValue} €</td></tr>
+                <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>${t("email.reimbursement.purchaser")}:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${data.purchaserName}</td></tr>
+                <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>${t("email.reimbursement.bank_account")}:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${data.bankAccount}</td></tr>
+                <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>${t("email.reimbursement.minutes")}:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${minutesHtml}</td></tr>
+                ${receiptListHtml}
+                ${data.notes ? `<tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>${t("email.reimbursement.notes")}:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${data.notes}</td></tr>` : ""}
             </table>
-            ${replyTo ? `<p style="margin-top: 16px; color: #888; font-size: 12px;">Vastaa tähän viestiin hyväksyäksesi tai hylätäksesi pyynnön.<br/>Reply to this email to approve or reject the request.</p>` : ""}
+            ${replyTo ? `<p style="margin-top: 16px; color: #888; font-size: 12px;">${t("email.reimbursement.reply_instruction")}</p>` : ""}
         `;
 
 		const attachments: { filename: string; content: string }[] = [];

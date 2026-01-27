@@ -1,461 +1,674 @@
-
 interface GoogleConfig {
-    apiKey: string;
-    calendarId: string;
-    publicRootFolderId: string;
-    // Service account for writing
-    serviceAccountEmail: string;
-    serviceAccountPrivateKey: string;
-    submissionsSheetId: string;
+	apiKey: string;
+	calendarId: string;
+	publicRootFolderId: string;
+	// Service account for writing
+	serviceAccountEmail: string;
+	serviceAccountPrivateKey: string;
+	submissionsSheetId: string;
+}
+
+interface DriveFile {
+	id: string;
+	name: string;
+	webViewLink?: string;
+	createdTime?: string;
 }
 
 const config: GoogleConfig = {
-    apiKey: process.env.GOOGLE_API_KEY || "",
-    calendarId: process.env.GOOGLE_CALENDAR_ID || "",
-    publicRootFolderId: process.env.GOOGLE_DRIVE_PUBLIC_ROOT_ID || "",
-    serviceAccountEmail: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || "",
-    serviceAccountPrivateKey: (process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY || "").replace(/\\n/g, "\n"),
-    submissionsSheetId: process.env.GOOGLE_SUBMISSIONS_SHEET_ID || "",
+	apiKey: process.env.GOOGLE_API_KEY || "",
+	calendarId: process.env.GOOGLE_CALENDAR_ID || "",
+	publicRootFolderId: process.env.GOOGLE_DRIVE_PUBLIC_ROOT_ID || "",
+	serviceAccountEmail: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || "",
+	serviceAccountPrivateKey: (
+		process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY || ""
+	).replace(/\\n/g, "\n"),
+	submissionsSheetId: process.env.GOOGLE_SUBMISSIONS_SHEET_ID || "",
 };
 
 // Debug: Log config on server start (mask sensitive data)
 console.log("[Google Config]", {
-    apiKey: config.apiKey ? `${config.apiKey.slice(0, 8)}...` : "MISSING",
-    calendarId: config.calendarId || "MISSING",
-    publicRootFolderId: config.publicRootFolderId || "MISSING",
-    serviceAccountEmail: config.serviceAccountEmail || "MISSING",
-    serviceAccountPrivateKey: config.serviceAccountPrivateKey ? "SET" : "MISSING",
-    submissionsSheetId: config.submissionsSheetId || "MISSING",
+	apiKey: config.apiKey ? `${config.apiKey.slice(0, 8)}...` : "MISSING",
+	calendarId: config.calendarId || "MISSING",
+	publicRootFolderId: config.publicRootFolderId || "MISSING",
+	serviceAccountEmail: config.serviceAccountEmail || "MISSING",
+	serviceAccountPrivateKey: config.serviceAccountPrivateKey ? "SET" : "MISSING",
+	submissionsSheetId: config.submissionsSheetId || "MISSING",
 });
 
+// Helper: Get service account access token (defined here for use in helper functions)
+// Full implementation with JWT is below, this is a forward declaration pattern
+let _cachedAccessToken: { token: string; expiry: number } | null = null;
 
+async function getAccessToken(): Promise<string | null> {
+	// Check if we have a valid cached token (with 5 min buffer)
+	if (_cachedAccessToken && _cachedAccessToken.expiry > Date.now() + 5 * 60 * 1000) {
+		return _cachedAccessToken.token;
+	}
 
-// Helper: Find a file or folder by name inside a parent folder
-async function findChildByName(parentId: string, name: string, mimeType?: string) {
-    if (!config.apiKey || !parentId) {
-        console.log(`[findChildByName] Skipped: apiKey=${!!config.apiKey}, parentId=${parentId}`);
-        return null;
-    }
+	if (!config.serviceAccountEmail || !config.serviceAccountPrivateKey) {
+		console.error("[getAccessToken] Missing service account credentials");
+		return null;
+	}
 
-    let q = `'${parentId}' in parents and name = '${name}' and trashed = false`;
-    if (mimeType) {
-        q += ` and mimeType = '${mimeType}'`;
-    }
+	try {
+		const now = Math.floor(Date.now() / 1000);
+		const expiry = now + 3600; // 1 hour
 
-    const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&key=${config.apiKey}&fields=files(id,name,webViewLink)`;
+		// JWT Header
+		const header = { alg: "RS256", typ: "JWT" };
 
-    try {
-        console.log(`[findChildByName] Query: name='${name}' in parent='${parentId}'`);
-        const res = await fetch(url);
-        if (!res.ok) {
-            console.log(`[findChildByName] API Error: ${res.status} ${res.statusText}`);
-            return null;
-        }
-        const data = await res.json();
-        console.log(`[findChildByName] Found ${data.files?.length || 0} results`);
-        return data.files?.[0] || null; // Return first match
-    } catch (e) {
-        console.error(`Error finding child '${name}' in '${parentId}':`, e);
-        return null;
-    }
+		// JWT Payload - includes Sheets and Drive scopes
+		const payload = {
+			iss: config.serviceAccountEmail,
+			scope:
+				"https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.readonly",
+			aud: "https://oauth2.googleapis.com/token",
+			iat: now,
+			exp: expiry,
+		};
+
+		// Base64url encode
+		const base64url = (obj: object) =>
+			Buffer.from(JSON.stringify(obj)).toString("base64url");
+
+		const unsignedToken = `${base64url(header)}.${base64url(payload)}`;
+
+		// Sign with private key
+		const crypto = await import("node:crypto");
+		const sign = crypto.createSign("RSA-SHA256");
+		sign.update(unsignedToken);
+		const signature = sign.sign(config.serviceAccountPrivateKey, "base64url");
+
+		const jwt = `${unsignedToken}.${signature}`;
+
+		// Exchange JWT for access token
+		const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+			method: "POST",
+			headers: { "Content-Type": "application/x-www-form-urlencoded" },
+			body: new URLSearchParams({
+				grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+				assertion: jwt,
+			}),
+		});
+
+		if (!tokenRes.ok) {
+			const errorText = await tokenRes.text();
+			console.error("[getAccessToken] Token exchange failed:", errorText);
+			return null;
+		}
+
+		const tokenData = await tokenRes.json();
+
+		// Cache the token
+		_cachedAccessToken = {
+			token: tokenData.access_token,
+			expiry: Date.now() + 55 * 60 * 1000, // 55 minutes (safe buffer)
+		};
+
+		return tokenData.access_token;
+	} catch (error) {
+		console.error("[getAccessToken] Error:", error);
+		return null;
+	}
 }
-import { getCached, setCache, clearCache, CACHE_TTL, CACHE_KEYS } from "./cache.server";
+
+// Helper: Find a file or folder by name inside a parent folder (uses service account)
+async function findChildByName(
+	parentId: string,
+	name: string,
+	mimeType?: string,
+) {
+	if (!parentId) {
+		console.log(`[findChildByName] Skipped: no parentId`);
+		return null;
+	}
+
+	const accessToken = await getAccessToken();
+	if (!accessToken) {
+		console.log("[findChildByName] Could not get access token");
+		return null;
+	}
+
+	let q = `'${parentId}' in parents and name = '${name}' and trashed = false`;
+	if (mimeType) {
+		q += ` and mimeType = '${mimeType}'`;
+	}
+
+	const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name,webViewLink)`;
+
+	try {
+		console.log(
+			`[findChildByName] Query: name='${name}' in parent='${parentId}'`,
+		);
+		const res = await fetch(url, {
+			headers: { Authorization: `Bearer ${accessToken}` },
+		});
+		if (!res.ok) {
+			console.log(
+				`[findChildByName] API Error: ${res.status} ${res.statusText}`,
+			);
+			return null;
+		}
+		const data = await res.json();
+		console.log(`[findChildByName] Found ${data.files?.length || 0} results`);
+		return data.files?.[0] || null; // Return first match
+	} catch (e) {
+		console.error(`Error finding child '${name}' in '${parentId}':`, e);
+		return null;
+	}
+}
+
+import {
+	CACHE_KEYS,
+	CACHE_TTL,
+	clearCache,
+	getCached,
+	setCache,
+} from "./cache.server";
 
 export async function getCalendarEvents() {
-    // Check cache first
-    const cached = getCached<any[]>(CACHE_KEYS.CALENDAR_EVENTS, CACHE_TTL.CALENDAR_EVENTS);
-    if (cached !== null) {
-        return cached;
-    }
+	// Check cache first
+	const cached = getCached<unknown[]>(
+		CACHE_KEYS.CALENDAR_EVENTS,
+		CACHE_TTL.CALENDAR_EVENTS,
+	);
+	if (cached !== null) {
+		return cached;
+	}
 
-    if (!config.apiKey || !config.calendarId) {
-        console.log("[getCalendarEvents] Skipped: missing config", { apiKey: !!config.apiKey, calendarId: !!config.calendarId });
-        return [];
-    }
+	if (!config.apiKey || !config.calendarId) {
+		console.log("[getCalendarEvents] Skipped: missing config", {
+			apiKey: !!config.apiKey,
+			calendarId: !!config.calendarId,
+		});
+		return [];
+	}
 
-    const now = new Date().toISOString();
-    const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(config.calendarId)}/events?key=${config.apiKey}&timeMin=${now}&singleEvents=true&orderBy=startTime&maxResults=10`;
+	const now = new Date().toISOString();
+	const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(config.calendarId)}/events?key=${config.apiKey}&timeMin=${now}&singleEvents=true&orderBy=startTime&maxResults=10`;
 
-    console.log(`[getCalendarEvents] Fetching events for calendar: ${config.calendarId}`);
+	console.log(
+		`[getCalendarEvents] Fetching events for calendar: ${config.calendarId}`,
+	);
 
-    try {
-        const res = await fetch(url);
-        console.log(`[getCalendarEvents] Response status: ${res.status}`);
+	try {
+		const res = await fetch(url);
+		console.log(`[getCalendarEvents] Response status: ${res.status}`);
 
-        if (!res.ok) {
-            const errorText = await res.text();
-            console.log(`[getCalendarEvents] API Error:`, errorText);
-            return [];
-        }
+		if (!res.ok) {
+			const errorText = await res.text();
+			console.log(`[getCalendarEvents] API Error:`, errorText);
+			return [];
+		}
 
-        const data = await res.json();
-        console.log(`[getCalendarEvents] Found ${data.items?.length || 0} events`);
+		const data = await res.json();
+		console.log(`[getCalendarEvents] Found ${data.items?.length || 0} events`);
 
-        const items = data.items || [];
+		const items = data.items || [];
 
-        // Cache the result
-        setCache(CACHE_KEYS.CALENDAR_EVENTS, items);
+		// Cache the result
+		setCache(CACHE_KEYS.CALENDAR_EVENTS, items);
 
-        return items;
-    } catch (error) {
-        console.error("Calendar fetch error:", error);
-        return [];
-    }
+		return items;
+	} catch (error) {
+		console.error("Calendar fetch error:", error);
+		return [];
+	}
 }
 
 export function getCalendarUrl() {
-    if (!config.calendarId) return "";
-    return `https://calendar.google.com/calendar/embed?src=${encodeURIComponent(config.calendarId)}`;
+	if (!config.calendarId) return "";
+	return `https://calendar.google.com/calendar/embed?src=${encodeURIComponent(config.calendarId)}`;
 }
 
 // Helper to get the Current Year Folder ID (from PUBLIC root)
 async function getCurrentYearFolder() {
-    if (!config.publicRootFolderId) {
-        console.log("[getCurrentYearFolder] No publicRootFolderId configured");
-        return null;
-    }
-    const currentYear = new Date().getFullYear().toString();
-    console.log(`[getCurrentYearFolder] Looking for folder '${currentYear}' in root '${config.publicRootFolderId}'`);
-    const folder = await findChildByName(config.publicRootFolderId, currentYear, "application/vnd.google-apps.folder");
-    console.log(`[getCurrentYearFolder] Result:`, folder ? folder.id : "NOT FOUND");
-    return folder;
+	if (!config.publicRootFolderId) {
+		console.log("[getCurrentYearFolder] No publicRootFolderId configured");
+		return null;
+	}
+	const currentYear = new Date().getFullYear().toString();
+	console.log(
+		`[getCurrentYearFolder] Looking for folder '${currentYear}' in root '${config.publicRootFolderId}'`,
+	);
+	const folder = await findChildByName(
+		config.publicRootFolderId,
+		currentYear,
+		"application/vnd.google-apps.folder",
+	);
+	console.log(
+		`[getCurrentYearFolder] Result:`,
+		folder ? folder.id : "NOT FOUND",
+	);
+	return folder;
 }
 
 export async function getMinutesFiles() {
-    // Check cache first
-    const cached = getCached<{ files: any[]; folderUrl: string }>(CACHE_KEYS.MINUTES, CACHE_TTL.MINUTES);
-    if (cached !== null && cached.folderUrl && cached.folderUrl !== "#") {
-        return cached;
-    }
+	// Check cache first
+	const cached = getCached<{ files: DriveFile[]; folderUrl: string }>(
+		CACHE_KEYS.MINUTES,
+		CACHE_TTL.MINUTES,
+	);
+	if (cached?.folderUrl && cached.folderUrl !== "#") {
+		return cached;
+	}
 
-    const yearFolder = await getCurrentYearFolder();
-    if (!yearFolder) return { files: [], folderUrl: "#" };
+	const yearFolder = await getCurrentYearFolder();
+	if (!yearFolder) return { files: [], folderUrl: "#" };
 
-    const minutesFolder = await findChildByName(yearFolder.id, "minutes", "application/vnd.google-apps.folder");
-    if (!minutesFolder) return { files: [], folderUrl: "#" };
+	const minutesFolder = await findChildByName(
+		yearFolder.id,
+		"minutes",
+		"application/vnd.google-apps.folder",
+	);
+	if (!minutesFolder) return { files: [], folderUrl: "#" };
 
-    // Now list files inside the minutes folder
-    const q = `'${minutesFolder.id}' in parents and trashed = false`;
-    const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&orderBy=name desc&key=${config.apiKey}&fields=files(id,name,webViewLink,createdTime)`;
+	// Now list files inside the minutes folder
+	const q = `'${minutesFolder.id}' in parents and trashed = false`;
+	const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&orderBy=name desc&fields=files(id,name,webViewLink,createdTime)`;
 
-    try {
-        const res = await fetch(url);
-        if (!res.ok) throw new Error("Failed to fetch minutes files");
-        const data = await res.json();
-        const result = {
-            files: data.files || [],
-            folderUrl: minutesFolder.webViewLink
-        };
+	const accessToken = await getAccessToken();
+	if (!accessToken) {
+		console.log("[getMinutesFiles] Could not get access token");
+		return { files: [], folderUrl: "#" };
+	}
 
-        // Cache the result
-        setCache(CACHE_KEYS.MINUTES, result);
+	try {
+		const res = await fetch(url, {
+			headers: { Authorization: `Bearer ${accessToken}` },
+		});
+		if (!res.ok) throw new Error("Failed to fetch minutes files");
+		const data = await res.json();
+		const result = {
+			files: data.files || [],
+			folderUrl: minutesFolder.webViewLink,
+		};
 
-        return result;
-    } catch (error) {
-        console.error(error);
-        return { files: [], folderUrl: "#" };
-    }
+		// Cache the result
+		setCache(CACHE_KEYS.MINUTES, result);
+
+		return result;
+	} catch (error) {
+		console.error(error);
+		return { files: [], folderUrl: "#" };
+	}
 }
 
 // Minutes grouped by year
 export interface MinutesByYear {
-    year: string;
-    files: {
-        id: string;
-        name: string;
-        url: string;
-        createdTime: string;
-    }[];
-    folderUrl: string;
+	year: string;
+	files: {
+		id: string;
+		name: string;
+		url: string;
+		createdTime: string;
+	}[];
+	folderUrl: string;
 }
 
 export async function getMinutesByYear(): Promise<MinutesByYear[]> {
-    // Check cache first
-    const cacheKey = "MINUTES_BY_YEAR";
-    const cached = getCached<MinutesByYear[]>(cacheKey, CACHE_TTL.MINUTES);
-    if (cached !== null && cached.length > 0) {
-        return cached;
-    }
+	// Check cache first
+	const cacheKey = "MINUTES_BY_YEAR";
+	const cached = getCached<MinutesByYear[]>(cacheKey, CACHE_TTL.MINUTES);
+	if (cached !== null && cached.length > 0) {
+		return cached;
+	}
 
-    if (!config.apiKey || !config.publicRootFolderId) {
-        console.log("[getMinutesByYear] Missing config");
-        return [];
-    }
+	if (!config.publicRootFolderId) {
+		console.log("[getMinutesByYear] Missing config");
+		return [];
+	}
 
-    // Step 1: List all year folders in the public root
-    const q = `'${config.publicRootFolderId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`;
-    const foldersUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&key=${config.apiKey}&fields=files(id,name,webViewLink)&orderBy=name desc`;
+	const accessToken = await getAccessToken();
+	if (!accessToken) {
+		console.log("[getMinutesByYear] Could not get access token");
+		return [];
+	}
 
-    try {
-        const foldersRes = await fetch(foldersUrl);
-        if (!foldersRes.ok) {
-            console.log(`[getMinutesByYear] Failed to list year folders: ${foldersRes.status}`);
-            return [];
-        }
-        const foldersData = await foldersRes.json();
-        const yearFolders = (foldersData.files || []).filter((f: any) => /^\d{4}$/.test(f.name));
+	// Step 1: List all year folders in the public root
+	const q = `'${config.publicRootFolderId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`;
+	const foldersUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name,webViewLink)&orderBy=name desc`;
 
-        console.log(`[getMinutesByYear] Found ${yearFolders.length} year folders`);
+	try {
+		const foldersRes = await fetch(foldersUrl, {
+			headers: { Authorization: `Bearer ${accessToken}` },
+		});
+		if (!foldersRes.ok) {
+			console.log(
+				`[getMinutesByYear] Failed to list year folders: ${foldersRes.status}`,
+			);
+			return [];
+		}
+		const foldersData = await foldersRes.json();
+		const yearFolders = (foldersData.files || []).filter((f: DriveFile) =>
+			/^\d{4}$/.test(f.name),
+		);
 
-        // Step 2: For each year folder, look for "minutes" subfolder and get its files
-        const currentYear = new Date().getFullYear().toString();
+		console.log(`[getMinutesByYear] Found ${yearFolders.length} year folders`);
 
-        // Use Promise.all to fetch years in parallel
-        const yearResults = await Promise.all(yearFolders.map(async (yearFolder: any) => {
-            const minutesFolder = await findChildByName(yearFolder.id, "minutes", "application/vnd.google-apps.folder");
+		// Step 2: For each year folder, look for "minutes" subfolder and get its files
+		const currentYear = new Date().getFullYear().toString();
 
-            if (!minutesFolder) {
-                // If this is the current year and no minutes folder, still include with empty files
-                if (yearFolder.name === currentYear) {
-                    return {
-                        year: yearFolder.name,
-                        files: [],
-                        folderUrl: "#"
-                    };
-                }
-                return null;
-            }
+		// Use Promise.all to fetch years in parallel
+		const yearResults = await Promise.all(
+			yearFolders.map(async (yearFolder: DriveFile) => {
+				const minutesFolder = await findChildByName(
+					yearFolder.id,
+					"minutes",
+					"application/vnd.google-apps.folder",
+				);
 
-            // List files in minutes folder
-            const filesQ = `'${minutesFolder.id}' in parents and trashed = false`;
-            const filesUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(filesQ)}&orderBy=name desc&key=${config.apiKey}&fields=files(id,name,webViewLink,createdTime)`;
+				if (!minutesFolder) {
+					// If this is the current year and no minutes folder, still include with empty files
+					if (yearFolder.name === currentYear) {
+						return {
+							year: yearFolder.name,
+							files: [],
+							folderUrl: "#",
+						};
+					}
+					return null;
+				}
 
-            try {
-                const filesRes = await fetch(filesUrl);
-                if (!filesRes.ok) return null;
+				// List files in minutes folder
+				const filesQ = `'${minutesFolder.id}' in parents and trashed = false`;
+				const filesUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(filesQ)}&orderBy=name desc&fields=files(id,name,webViewLink,createdTime)`;
 
-                const filesData = await filesRes.json();
+				try {
+					const filesRes = await fetch(filesUrl, {
+						headers: { Authorization: `Bearer ${accessToken}` },
+					});
+					if (!filesRes.ok) return null;
 
-                return {
-                    year: yearFolder.name,
-                    files: (filesData.files || []).map((f: any) => ({
-                        id: f.id,
-                        name: f.name?.replace(/\.(pdf|docx?)$/i, "") || "Untitled",
-                        url: f.webViewLink,
-                        createdTime: f.createdTime
-                    })),
-                    folderUrl: minutesFolder.webViewLink || "#"
-                };
-            } catch (error) {
-                console.error(`Error fetching files for year ${yearFolder.name}:`, error);
-                return null;
-            }
-        }));
+					const filesData = await filesRes.json();
 
-        const results: MinutesByYear[] = yearResults.filter((r): r is MinutesByYear => r !== null);
+					return {
+						year: yearFolder.name,
+						files: (filesData.files || []).map((f: DriveFile) => ({
+							id: f.id,
+							name: f.name?.replace(/\.(pdf|docx?)$/i, "") || "Untitled",
+							url: f.webViewLink,
+							createdTime: f.createdTime,
+						})),
+						folderUrl: minutesFolder.webViewLink || "#",
+					};
+				} catch (error) {
+					console.error(
+						`Error fetching files for year ${yearFolder.name}:`,
+						error,
+					);
+					return null;
+				}
+			}),
+		);
 
-        // Ensure current year is always first (even if no minutes yet)
-        const hasCurrentYear = results.some(r => r.year === currentYear);
-        if (!hasCurrentYear) {
-            results.unshift({
-                year: currentYear,
-                files: [],
-                folderUrl: "#"
-            });
-        }
+		const results: MinutesByYear[] = yearResults.filter(
+			(r): r is MinutesByYear => r !== null,
+		);
 
-        // Sort by year descending
-        results.sort((a, b) => parseInt(b.year) - parseInt(a.year));
+		// Ensure current year is always first (even if no minutes yet)
+		const hasCurrentYear = results.some((r) => r.year === currentYear);
+		if (!hasCurrentYear) {
+			results.unshift({
+				year: currentYear,
+				files: [],
+				folderUrl: "#",
+			});
+		}
 
-        // Cache results
-        setCache(cacheKey, results);
+		// Sort by year descending
+		results.sort((a, b) => parseInt(b.year, 10) - parseInt(a.year, 10));
 
-        console.log(`[getMinutesByYear] Returning ${results.length} years`);
-        return results;
-    } catch (error) {
-        console.error("[getMinutesByYear] Error:", error);
-        return [];
-    }
+		// Cache results
+		setCache(cacheKey, results);
+
+		console.log(`[getMinutesByYear] Returning ${results.length} years`);
+		return results;
+	} catch (error) {
+		console.error("[getMinutesByYear] Error:", error);
+		return [];
+	}
 }
 
 // Receipts grouped by year - mirrors getMinutesByYear structure
 export interface ReceiptsByYear {
-    year: string;
-    files: {
-        id: string;
-        name: string;
-        url: string;
-        createdTime: string;
-    }[];
-    folderUrl: string;
-    folderId: string;
+	year: string;
+	files: {
+		id: string;
+		name: string;
+		url: string;
+		createdTime: string;
+	}[];
+	folderUrl: string;
+	folderId: string;
 }
 
 export async function getReceiptsByYear(): Promise<ReceiptsByYear[]> {
-    // Check cache first
-    const cacheKey = "RECEIPTS_BY_YEAR";
-    const cached = getCached<ReceiptsByYear[]>(cacheKey, CACHE_TTL.MINUTES);
-    if (cached !== null && cached.length > 0) {
-        return cached;
-    }
+	// Check cache first
+	const cacheKey = "RECEIPTS_BY_YEAR";
+	const cached = getCached<ReceiptsByYear[]>(cacheKey, CACHE_TTL.MINUTES);
+	if (cached !== null && cached.length > 0) {
+		return cached;
+	}
 
-    if (!config.apiKey || !config.publicRootFolderId) {
-        console.log("[getReceiptsByYear] Missing config");
-        return [];
-    }
+	if (!config.publicRootFolderId) {
+		console.log("[getReceiptsByYear] Missing config");
+		return [];
+	}
 
-    // Step 1: List all year folders in the public root
-    const q = `'${config.publicRootFolderId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`;
-    const foldersUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&key=${config.apiKey}&fields=files(id,name,webViewLink)&orderBy=name desc`;
+	const accessToken = await getAccessToken();
+	if (!accessToken) {
+		console.log("[getReceiptsByYear] Could not get access token");
+		return [];
+	}
 
-    try {
-        const foldersRes = await fetch(foldersUrl);
-        if (!foldersRes.ok) {
-            console.log(`[getReceiptsByYear] Failed to list year folders: ${foldersRes.status}`);
-            return [];
-        }
-        const foldersData = await foldersRes.json();
-        const yearFolders = (foldersData.files || []).filter((f: any) => /^\d{4}$/.test(f.name));
+	// Step 1: List all year folders in the public root
+	const q = `'${config.publicRootFolderId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`;
+	const foldersUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name,webViewLink)&orderBy=name desc`;
 
-        console.log(`[getReceiptsByYear] Found ${yearFolders.length} year folders`);
+	try {
+		const foldersRes = await fetch(foldersUrl, {
+			headers: { Authorization: `Bearer ${accessToken}` },
+		});
+		if (!foldersRes.ok) {
+			console.log(
+				`[getReceiptsByYear] Failed to list year folders: ${foldersRes.status}`,
+			);
+			return [];
+		}
+		const foldersData = await foldersRes.json();
+		const yearFolders = (foldersData.files || []).filter((f: DriveFile) =>
+			/^\d{4}$/.test(f.name),
+		);
 
-        const currentYear = new Date().getFullYear().toString();
+		console.log(`[getReceiptsByYear] Found ${yearFolders.length} year folders`);
 
-        // Step 2: For each year folder, look for "receipts" subfolder and get its files
-        const yearResults = await Promise.all(yearFolders.map(async (yearFolder: any) => {
-            const receiptsFolder = await findChildByName(yearFolder.id, "receipts", "application/vnd.google-apps.folder");
+		const currentYear = new Date().getFullYear().toString();
 
-            if (!receiptsFolder) {
-                // If this is the current year and no receipts folder, still include with empty files
-                if (yearFolder.name === currentYear) {
-                    return {
-                        year: yearFolder.name,
-                        files: [],
-                        folderUrl: "#",
-                        folderId: "",
-                    };
-                }
-                return null;
-            }
+		// Step 2: For each year folder, look for "receipts" subfolder and get its files
+		const yearResults = await Promise.all(
+			yearFolders.map(async (yearFolder: DriveFile) => {
+				const receiptsFolder = await findChildByName(
+					yearFolder.id,
+					"receipts",
+					"application/vnd.google-apps.folder",
+				);
 
-            // List files in receipts folder
-            const filesQ = `'${receiptsFolder.id}' in parents and trashed = false`;
-            const filesUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(filesQ)}&orderBy=name desc&key=${config.apiKey}&fields=files(id,name,webViewLink,createdTime)`;
+				if (!receiptsFolder) {
+					// If this is the current year and no receipts folder, still include with empty files
+					if (yearFolder.name === currentYear) {
+						return {
+							year: yearFolder.name,
+							files: [],
+							folderUrl: "#",
+							folderId: "",
+						};
+					}
+					return null;
+				}
 
-            try {
-                const filesRes = await fetch(filesUrl);
-                if (!filesRes.ok) return null;
+				// List files in receipts folder
+				const filesQ = `'${receiptsFolder.id}' in parents and trashed = false`;
+				const filesUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(filesQ)}&orderBy=name desc&fields=files(id,name,webViewLink,createdTime)`;
 
-                const filesData = await filesRes.json();
+				try {
+					const filesRes = await fetch(filesUrl, {
+						headers: { Authorization: `Bearer ${accessToken}` },
+					});
+					if (!filesRes.ok) return null;
 
-                return {
-                    year: yearFolder.name,
-                    files: (filesData.files || []).map((f: any) => ({
-                        id: f.id,
-                        name: f.name || "Untitled",
-                        url: f.webViewLink,
-                        createdTime: f.createdTime
-                    })),
-                    folderUrl: receiptsFolder.webViewLink || "#",
-                    folderId: receiptsFolder.id,
-                };
-            } catch (error) {
-                console.error(`Error fetching receipts for year ${yearFolder.name}:`, error);
-                return null;
-            }
-        }));
+					const filesData = await filesRes.json();
 
-        const results: ReceiptsByYear[] = yearResults.filter((r): r is ReceiptsByYear => r !== null);
+					return {
+						year: yearFolder.name,
+						files: (filesData.files || []).map((f: DriveFile) => ({
+							id: f.id,
+							name: f.name || "Untitled",
+							url: f.webViewLink || "#",
+							createdTime: f.createdTime,
+						})),
+						folderUrl: receiptsFolder.webViewLink || "#",
+						folderId: receiptsFolder.id,
+					};
+				} catch (error) {
+					console.error(
+						`Error fetching receipts for year ${yearFolder.name}:`,
+						error,
+					);
+					return null;
+				}
+			}),
+		);
 
-        // Ensure current year is always first (even if no receipts folder yet)
-        const hasCurrentYear = results.some(r => r.year === currentYear);
-        if (!hasCurrentYear) {
-            results.unshift({
-                year: currentYear,
-                files: [],
-                folderUrl: "#",
-                folderId: "",
-            });
-        }
+		const results: ReceiptsByYear[] = yearResults.filter(
+			(r): r is ReceiptsByYear => r !== null,
+		);
 
-        // Sort by year descending
-        results.sort((a, b) => parseInt(b.year) - parseInt(a.year));
+		// Ensure current year is always first (even if no receipts folder yet)
+		const hasCurrentYear = results.some((r) => r.year === currentYear);
+		if (!hasCurrentYear) {
+			results.unshift({
+				year: currentYear,
+				files: [],
+				folderUrl: "#",
+				folderId: "",
+			});
+		}
 
-        // Cache results
-        setCache(cacheKey, results);
+		// Sort by year descending
+		results.sort((a, b) => parseInt(b.year, 10) - parseInt(a.year, 10));
 
-        console.log(`[getReceiptsByYear] Returning ${results.length} years`);
-        return results;
-    } catch (error) {
-        console.error("[getReceiptsByYear] Error:", error);
-        return [];
-    }
+		// Cache results
+		setCache(cacheKey, results);
+
+		console.log(`[getReceiptsByYear] Returning ${results.length} years`);
+		return results;
+	} catch (error) {
+		console.error("[getReceiptsByYear] Error:", error);
+		return [];
+	}
 }
 
 /**
  * Get or create receipts folder for a given year
  * Uses service account to create folder if it doesn't exist
  */
-export async function getOrCreateReceiptsFolder(year: string): Promise<{ folderId: string; folderUrl: string } | null> {
-    if (!config.publicRootFolderId) {
-        console.error("[getOrCreateReceiptsFolder] Missing publicRootFolderId");
-        return null;
-    }
+export async function getOrCreateReceiptsFolder(
+	year: string,
+): Promise<{ folderId: string; folderUrl: string } | null> {
+	if (!config.publicRootFolderId) {
+		console.error("[getOrCreateReceiptsFolder] Missing publicRootFolderId");
+		return null;
+	}
 
-    // First, find the year folder
-    const yearFolder = await findChildByName(config.publicRootFolderId, year, "application/vnd.google-apps.folder");
-    if (!yearFolder) {
-        console.error(`[getOrCreateReceiptsFolder] Year folder '${year}' not found`);
-        return null;
-    }
+	// First, find the year folder
+	const yearFolder = await findChildByName(
+		config.publicRootFolderId,
+		year,
+		"application/vnd.google-apps.folder",
+	);
+	if (!yearFolder) {
+		console.error(
+			`[getOrCreateReceiptsFolder] Year folder '${year}' not found`,
+		);
+		return null;
+	}
 
-    // Check if receipts folder already exists
-    const existingReceipts = await findChildByName(yearFolder.id, "receipts", "application/vnd.google-apps.folder");
-    if (existingReceipts) {
-        return {
-            folderId: existingReceipts.id,
-            folderUrl: existingReceipts.webViewLink || `https://drive.google.com/drive/folders/${existingReceipts.id}`,
-        };
-    }
+	// Check if receipts folder already exists
+	const existingReceipts = await findChildByName(
+		yearFolder.id,
+		"receipts",
+		"application/vnd.google-apps.folder",
+	);
+	if (existingReceipts) {
+		return {
+			folderId: existingReceipts.id,
+			folderUrl:
+				existingReceipts.webViewLink ||
+				`https://drive.google.com/drive/folders/${existingReceipts.id}`,
+		};
+	}
 
-    // Create receipts folder using service account
-    const accessToken = await getServiceAccountAccessToken();
-    if (!accessToken) {
-        console.error("[getOrCreateReceiptsFolder] Could not get service account access token");
-        return null;
-    }
+	// Create receipts folder using service account
+	const accessToken = await getServiceAccountAccessToken();
+	if (!accessToken) {
+		console.error(
+			"[getOrCreateReceiptsFolder] Could not get service account access token",
+		);
+		return null;
+	}
 
-    try {
-        const createRes = await fetch("https://www.googleapis.com/drive/v3/files", {
-            method: "POST",
-            headers: {
-                "Authorization": `Bearer ${accessToken}`,
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-                name: "receipts",
-                mimeType: "application/vnd.google-apps.folder",
-                parents: [yearFolder.id],
-            }),
-        });
+	try {
+		const createRes = await fetch("https://www.googleapis.com/drive/v3/files", {
+			method: "POST",
+			headers: {
+				Authorization: `Bearer ${accessToken}`,
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({
+				name: "receipts",
+				mimeType: "application/vnd.google-apps.folder",
+				parents: [yearFolder.id],
+			}),
+		});
 
-        if (!createRes.ok) {
-            const errorText = await createRes.text();
-            console.error("[getOrCreateReceiptsFolder] Failed to create folder:", errorText);
-            
-            // If it's a permissions error, return a special response
-            if (createRes.status === 403) {
-                console.warn("[getOrCreateReceiptsFolder] Service account lacks write permissions on year folder. Manual creation required.");
-                // Return null to indicate folder doesn't exist but avoid crashing
-                return null;
-            }
-            return null;
-        }
+		if (!createRes.ok) {
+			const errorText = await createRes.text();
+			console.error(
+				"[getOrCreateReceiptsFolder] Failed to create folder:",
+				errorText,
+			);
 
-        const newFolder = await createRes.json();
-        console.log(`[getOrCreateReceiptsFolder] Created receipts folder for ${year}: ${newFolder.id}`);
+			// If it's a permissions error, return a special response
+			if (createRes.status === 403) {
+				console.warn(
+					"[getOrCreateReceiptsFolder] Service account lacks write permissions on year folder. Manual creation required.",
+				);
+				// Return null to indicate folder doesn't exist but avoid crashing
+				return null;
+			}
+			return null;
+		}
 
-        // Clear cache so new folder is picked up
-        clearCache("RECEIPTS_BY_YEAR");
+		const newFolder = await createRes.json();
+		console.log(
+			`[getOrCreateReceiptsFolder] Created receipts folder for ${year}: ${newFolder.id}`,
+		);
 
-        return {
-            folderId: newFolder.id,
-            folderUrl: newFolder.webViewLink || `https://drive.google.com/drive/folders/${newFolder.id}`,
-        };
-    } catch (error) {
-        console.error("[getOrCreateReceiptsFolder] Error creating folder:", error);
-        return null;
-    }
+		// Clear cache so new folder is picked up
+		clearCache("RECEIPTS_BY_YEAR");
+
+		return {
+			folderId: newFolder.id,
+			folderUrl:
+				newFolder.webViewLink ||
+				`https://drive.google.com/drive/folders/${newFolder.id}`,
+		};
+	} catch (error) {
+		console.error("[getOrCreateReceiptsFolder] Error creating folder:", error);
+		return null;
+	}
 }
 
 /**
@@ -466,347 +679,328 @@ export async function getOrCreateReceiptsFolder(year: string): Promise<{ folderI
  * @returns The uploaded file info or null on failure
  */
 export async function uploadReceiptToDrive(
-    file: { name: string; content: string; mimeType: string },
-    year: string,
-    description: string
+	file: { name: string; content: string; mimeType: string },
+	year: string,
+	description: string,
 ): Promise<{ id: string; name: string; url: string } | null> {
-    // Get or create the receipts folder
-    const receiptsFolder = await getOrCreateReceiptsFolder(year);
-    if (!receiptsFolder) {
-        console.error("[uploadReceiptToDrive] Could not get/create receipts folder");
-        return null;
-    }
+	// Get or create the receipts folder
+	const receiptsFolder = await getOrCreateReceiptsFolder(year);
+	if (!receiptsFolder) {
+		console.error(
+			"[uploadReceiptToDrive] Could not get/create receipts folder",
+		);
+		return null;
+	}
 
-    const accessToken = await getServiceAccountAccessToken();
-    if (!accessToken) {
-        console.error("[uploadReceiptToDrive] Could not get service account access token");
-        return null;
-    }
+	const accessToken = await getServiceAccountAccessToken();
+	if (!accessToken) {
+		console.error(
+			"[uploadReceiptToDrive] Could not get service account access token",
+		);
+		return null;
+	}
 
-    // Generate filename: YYYY-MM-DD_kuitti_description.ext
-    const date = new Date().toISOString().split("T")[0];
-    const ext = file.name.split(".").pop() || "pdf";
-    const sanitizedDesc = description
-        .toLowerCase()
-        .replace(/[^a-z0-9äöå]/gi, "_")
-        .replace(/_+/g, "_")
-        .substring(0, 50);
-    const newFileName = `${date}_kuitti_${sanitizedDesc}.${ext}`;
+	// Generate filename: YYYY-MM-DD_kuitti_description.ext
+	const date = new Date().toISOString().split("T")[0];
+	const ext = file.name.split(".").pop() || "pdf";
+	const sanitizedDesc = description
+		.toLowerCase()
+		.replace(/[^a-z0-9äöå]/gi, "_")
+		.replace(/_+/g, "_")
+		.substring(0, 50);
+	const newFileName = `${date}_kuitti_${sanitizedDesc}.${ext}`;
 
-    try {
-        // Use multipart upload for files with content
-        const boundary = "-------314159265358979323846";
-        const delimiter = `\r\n--${boundary}\r\n`;
-        const closeDelimiter = `\r\n--${boundary}--`;
+	try {
+		// Use multipart upload for files with content
+		const boundary = "-------314159265358979323846";
+		const delimiter = `\r\n--${boundary}\r\n`;
+		const closeDelimiter = `\r\n--${boundary}--`;
 
-        const metadata = {
-            name: newFileName,
-            parents: [receiptsFolder.folderId],
-        };
+		const metadata = {
+			name: newFileName,
+			parents: [receiptsFolder.folderId],
+		};
 
-        const multipartBody =
-            delimiter +
-            "Content-Type: application/json; charset=UTF-8\r\n\r\n" +
-            JSON.stringify(metadata) +
-            delimiter +
-            `Content-Type: ${file.mimeType}\r\n` +
-            "Content-Transfer-Encoding: base64\r\n\r\n" +
-            file.content +
-            closeDelimiter;
+		const multipartBody =
+			delimiter +
+			"Content-Type: application/json; charset=UTF-8\r\n\r\n" +
+			JSON.stringify(metadata) +
+			delimiter +
+			`Content-Type: ${file.mimeType}\r\n` +
+			"Content-Transfer-Encoding: base64\r\n\r\n" +
+			file.content +
+			closeDelimiter;
 
-        const uploadRes = await fetch(
-            "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink",
-            {
-                method: "POST",
-                headers: {
-                    "Authorization": `Bearer ${accessToken}`,
-                    "Content-Type": `multipart/related; boundary=${boundary}`,
-                },
-                body: multipartBody,
-            }
-        );
+		const uploadRes = await fetch(
+			"https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink",
+			{
+				method: "POST",
+				headers: {
+					Authorization: `Bearer ${accessToken}`,
+					"Content-Type": `multipart/related; boundary=${boundary}`,
+				},
+				body: multipartBody,
+			},
+		);
 
-        if (!uploadRes.ok) {
-            const errorText = await uploadRes.text();
-            console.error("[uploadReceiptToDrive] Upload failed:", errorText);
-            return null;
-        }
+		if (!uploadRes.ok) {
+			const errorText = await uploadRes.text();
+			console.error("[uploadReceiptToDrive] Upload failed:", errorText);
+			return null;
+		}
 
-        const uploadedFile = await uploadRes.json();
-        console.log(`[uploadReceiptToDrive] Uploaded: ${uploadedFile.name} (${uploadedFile.id})`);
+		const uploadedFile = await uploadRes.json();
+		console.log(
+			`[uploadReceiptToDrive] Uploaded: ${uploadedFile.name} (${uploadedFile.id})`,
+		);
 
-        // Clear cache so new file is picked up
-        clearCache("RECEIPTS_BY_YEAR");
+		// Clear cache so new file is picked up
+		clearCache("RECEIPTS_BY_YEAR");
 
-        return {
-            id: uploadedFile.id,
-            name: uploadedFile.name,
-            url: uploadedFile.webViewLink || `https://drive.google.com/file/d/${uploadedFile.id}/view`,
-        };
-    } catch (error) {
-        console.error("[uploadReceiptToDrive] Error:", error);
-        return null;
-    }
-}
-
-export async function getBudgetInfo() {
-    // Check cache first
-    const cached = getCached<{ remaining: string; total: string; lastUpdated: string; detailsUrl: string }>(CACHE_KEYS.BUDGET, CACHE_TTL.BUDGET);
-    if (cached !== null && cached.detailsUrl) {
-        return cached;
-    }
-
-    const yearFolder = await getCurrentYearFolder();
-    if (!yearFolder) return null;
-
-    // Look for "budget" spreadsheet
-    let budgetFile = await findChildByName(yearFolder.id, "budget", "application/vnd.google-apps.spreadsheet");
-
-    // If not found, maybe they named it "budget.csv" but it IS a spreadsheet
-    if (!budgetFile) {
-        budgetFile = await findChildByName(yearFolder.id, "budget.csv", "application/vnd.google-apps.spreadsheet");
-    }
-
-    if (!budgetFile) return null;
-
-    // Fetch transaction rows: Receipt, Date, Description, Person, Amount, Category
-    // Stop at "---" marker row (summary section)
-    const range = "A2:E";
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${budgetFile.id}/values/${range}?key=${config.apiKey}`;
-
-    try {
-        const res = await fetch(url);
-        if (!res.ok) return null;
-        const data = await res.json();
-        const rows = data.values || [];
-
-        let totalIncome = 0;
-        let totalExpenses = 0;
-        let latestDate = "";
-
-        for (const row of rows) {
-            // Stop at marker row (starts with "---")
-            if (row[0]?.toString().startsWith("---")) break;
-
-            // Skip empty rows
-            if (!row[0] || !row[4]) continue;
-
-            const amount = parseFloat(row[4]?.toString().replace(/−/g, "-").replace(",", ".").replace(/[^\d.-]/g, "")) || 0;
-            const date = row[1]?.toString() || "";
-
-            if (amount > 0) {
-                totalIncome += amount;
-            } else {
-                totalExpenses += Math.abs(amount);
-            }
-
-            // Track latest date (simple string comparison works for DD.MM.YYYY if sorted)
-            if (date && date > latestDate) {
-                latestDate = date;
-            }
-        }
-
-        const remaining = totalIncome - totalExpenses;
-
-        const result = {
-            remaining: `${remaining.toFixed(2).replace(".", ",")} €`,
-            total: `${totalIncome.toFixed(2).replace(".", ",")} €`,
-            lastUpdated: latestDate,
-            detailsUrl: budgetFile.webViewLink || `https://docs.google.com/spreadsheets/d/${budgetFile.id}`
-        };
-
-        console.log(`[getBudgetInfo] Calculated from ${rows.length} rows: remaining=${result.remaining}, total=${result.total}`);
-
-        // Cache the result
-        setCache(CACHE_KEYS.BUDGET, result);
-
-        return result;
-    } catch (error) {
-        console.error("Budget fetch error:", error);
-        return null;
-    }
+		return {
+			id: uploadedFile.id,
+			name: uploadedFile.name,
+			url:
+				uploadedFile.webViewLink ||
+				`https://drive.google.com/file/d/${uploadedFile.id}/view`,
+		};
+	} catch (error) {
+		console.error("[uploadReceiptToDrive] Error:", error);
+		return null;
+	}
 }
 
 // ============================================
-// INVENTORY (from "inventory" sheet in year folder)
+// INVENTORY (from database, legacy sheet methods below for reference)
 // ============================================
 
 export interface InventoryItem {
-    name: string;
-    quantity: number;
-    location: string;
-    category: string;
-    description: string;
-    value: number;
+	name: string;
+	quantity: number;
+	location: string;
+	category: string;
+	description: string;
+	value: number;
 }
 
 export interface InventoryInfo {
-    topItems: InventoryItem[];
-    detailsUrl: string;
+	topItems: InventoryItem[];
+	detailsUrl: string;
 }
 
 export async function getInventory(): Promise<InventoryInfo | null> {
-    // Check cache first
-    const cached = getCached<InventoryInfo>(CACHE_KEYS.INVENTORY, CACHE_TTL.INVENTORY);
-    if (cached !== null && cached.detailsUrl) {
-        return cached;
-    }
+	// Check cache first
+	const cached = getCached<InventoryInfo>(
+		CACHE_KEYS.INVENTORY,
+		CACHE_TTL.INVENTORY,
+	);
+	if (cached?.detailsUrl) {
+		return cached;
+	}
 
-    const yearFolder = await getCurrentYearFolder();
-    if (!yearFolder) return null;
+	const yearFolder = await getCurrentYearFolder();
+	if (!yearFolder) return null;
 
-    // Look for "inventory" spreadsheet
-    let inventoryFile = await findChildByName(yearFolder.id, "inventory", "application/vnd.google-apps.spreadsheet");
+	// Look for "inventory" spreadsheet
+	let inventoryFile = await findChildByName(
+		yearFolder.id,
+		"inventory",
+		"application/vnd.google-apps.spreadsheet",
+	);
 
-    // If not found, maybe they named it "inventory.csv" but it IS a spreadsheet
-    if (!inventoryFile) {
-        inventoryFile = await findChildByName(yearFolder.id, "inventory.csv", "application/vnd.google-apps.spreadsheet");
-    }
+	// If not found, maybe they named it "inventory.csv" but it IS a spreadsheet
+	if (!inventoryFile) {
+		inventoryFile = await findChildByName(
+			yearFolder.id,
+			"inventory.csv",
+			"application/vnd.google-apps.spreadsheet",
+		);
+	}
 
-    if (!inventoryFile) return null;
+	if (!inventoryFile) return null;
 
-    // Fetch data starting from row 2 (skip header), columns A:F
-    const range = "A2:F";
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${inventoryFile.id}/values/${range}?key=${config.apiKey}`;
+	const accessToken = await getAccessToken();
+	if (!accessToken) {
+		console.log("[getInventory] Could not get access token");
+		return null;
+	}
 
-    try {
-        const res = await fetch(url);
-        if (!res.ok) return null;
-        const data = await res.json();
-        const rows = data.values;
+	// Fetch data starting from row 2 (skip header), columns A:F
+	const range = "A2:F";
+	const url = `https://sheets.googleapis.com/v4/spreadsheets/${inventoryFile.id}/values/${range}`;
 
-        if (!rows || rows.length === 0) {
-            console.log("[getInventory] No data rows found");
-            return {
-                topItems: [],
-                detailsUrl: inventoryFile.webViewLink || `https://docs.google.com/spreadsheets/d/${inventoryFile.id}`
-            };
-        }
+	try {
+		const res = await fetch(url, {
+			headers: { Authorization: `Bearer ${accessToken}` },
+		});
+		if (!res.ok) return null;
+		const data = await res.json();
+		const rows = data.values;
 
-        // Parse rows into InventoryItem objects
-        const items: InventoryItem[] = rows
-            .filter((row: string[]) => row[0]) // Must have a name
-            .map((row: string[]) => ({
-                name: row[0] || "",
-                quantity: parseInt(row[1]) || 0,
-                location: row[2] || "",
-                category: row[3] || "",
-                description: row[4] || "",
-                value: parseFloat(row[5]) || 0,
-            }));
+		if (!rows || rows.length === 0) {
+			console.log("[getInventory] No data rows found");
+			return {
+				topItems: [],
+				detailsUrl:
+					inventoryFile.webViewLink ||
+					`https://docs.google.com/spreadsheets/d/${inventoryFile.id}`,
+			};
+		}
 
-        // Sort by value descending and take top 3
-        const topItems = items
-            .sort((a, b) => b.value - a.value)
-            .slice(0, 3);
+		// Parse rows into InventoryItem objects
+		const items: InventoryItem[] = rows
+			.filter((row: string[]) => row[0]) // Must have a name
+			.map((row: string[]) => ({
+				name: row[0] || "",
+				quantity: parseInt(row[1], 10) || 0,
+				location: row[2] || "",
+				category: row[3] || "",
+				description: row[4] || "",
+				value: parseFloat(row[5]) || 0,
+			}));
 
-        const result: InventoryInfo = {
-            topItems,
-            detailsUrl: inventoryFile.webViewLink || `https://docs.google.com/spreadsheets/d/${inventoryFile.id}`
-        };
+		// Sort by value descending and take top 3
+		const topItems = items.sort((a, b) => b.value - a.value).slice(0, 3);
 
-        console.log(`[getInventory] Discovered sheet URL: ${result.detailsUrl}, found ${items.length} items, returning top ${topItems.length}`);
+		const result: InventoryInfo = {
+			topItems,
+			detailsUrl:
+				inventoryFile.webViewLink ||
+				`https://docs.google.com/spreadsheets/d/${inventoryFile.id}`,
+		};
 
-        // Cache the result
-        setCache(CACHE_KEYS.INVENTORY, result);
+		console.log(
+			`[getInventory] Discovered sheet URL: ${result.detailsUrl}, found ${items.length} items, returning top ${topItems.length}`,
+		);
 
-        return result;
-    } catch (error) {
-        console.error("Inventory fetch error:", error);
-        return null;
-    }
+		// Cache the result
+		setCache(CACHE_KEYS.INVENTORY, result);
+
+		return result;
+	} catch (error) {
+		console.error("Inventory fetch error:", error);
+		return null;
+	}
 }
 
 // Get all inventory items (for filtering by location)
-export async function getAllInventoryItems(): Promise<{ items: InventoryItem[]; detailsUrl: string } | null> {
-    const yearFolder = await getCurrentYearFolder();
-    if (!yearFolder) return null;
+export async function getAllInventoryItems(): Promise<{
+	items: InventoryItem[];
+	detailsUrl: string;
+} | null> {
+	const yearFolder = await getCurrentYearFolder();
+	if (!yearFolder) return null;
 
-    // Look for "inventory" spreadsheet
-    let inventoryFile = await findChildByName(yearFolder.id, "inventory", "application/vnd.google-apps.spreadsheet");
+	// Look for "inventory" spreadsheet
+	let inventoryFile = await findChildByName(
+		yearFolder.id,
+		"inventory",
+		"application/vnd.google-apps.spreadsheet",
+	);
 
-    // If not found, maybe they named it "inventory.csv" but it IS a spreadsheet
-    if (!inventoryFile) {
-        inventoryFile = await findChildByName(yearFolder.id, "inventory.csv", "application/vnd.google-apps.spreadsheet");
-    }
+	// If not found, maybe they named it "inventory.csv" but it IS a spreadsheet
+	if (!inventoryFile) {
+		inventoryFile = await findChildByName(
+			yearFolder.id,
+			"inventory.csv",
+			"application/vnd.google-apps.spreadsheet",
+		);
+	}
 
-    if (!inventoryFile) return null;
+	if (!inventoryFile) return null;
 
-    // Fetch data starting from row 2 (skip header), columns A:F
-    const range = "A2:F";
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${inventoryFile.id}/values/${range}?key=${config.apiKey}`;
+	const accessToken = await getAccessToken();
+	if (!accessToken) {
+		console.log("[getAllInventoryItems] Could not get access token");
+		return null;
+	}
 
-    try {
-        const res = await fetch(url);
-        if (!res.ok) return null;
-        const data = await res.json();
-        const rows = data.values;
+	// Fetch data starting from row 2 (skip header), columns A:F
+	const range = "A2:F";
+	const url = `https://sheets.googleapis.com/v4/spreadsheets/${inventoryFile.id}/values/${range}`;
 
-        if (!rows || rows.length === 0) {
-            return {
-                items: [],
-                detailsUrl: inventoryFile.webViewLink || `https://docs.google.com/spreadsheets/d/${inventoryFile.id}`
-            };
-        }
+	try {
+		const res = await fetch(url, {
+			headers: { Authorization: `Bearer ${accessToken}` },
+		});
+		if (!res.ok) return null;
+		const data = await res.json();
+		const rows = data.values;
 
-        // Parse rows into InventoryItem objects
-        const items: InventoryItem[] = rows
-            .filter((row: string[]) => row[0]) // Must have a name
-            .map((row: string[]) => ({
-                name: row[0] || "",
-                quantity: parseInt(row[1]) || 0,
-                location: row[2] || "",
-                category: row[3] || "",
-                description: row[4] || "",
-                value: parseFloat(row[5]) || 0,
-            }));
+		if (!rows || rows.length === 0) {
+			return {
+				items: [],
+				detailsUrl:
+					inventoryFile.webViewLink ||
+					`https://docs.google.com/spreadsheets/d/${inventoryFile.id}`,
+			};
+		}
 
-        return {
-            items,
-            detailsUrl: inventoryFile.webViewLink || `https://docs.google.com/spreadsheets/d/${inventoryFile.id}`
-        };
-    } catch (error) {
-        console.error("Inventory fetch error:", error);
-        return null;
-    }
+		// Parse rows into InventoryItem objects
+		const items: InventoryItem[] = rows
+			.filter((row: string[]) => row[0]) // Must have a name
+			.map((row: string[]) => ({
+				name: row[0] || "",
+				quantity: parseInt(row[1], 10) || 0,
+				location: row[2] || "",
+				category: row[3] || "",
+				description: row[4] || "",
+				value: parseFloat(row[5]) || 0,
+			}));
+
+		return {
+			items,
+			detailsUrl:
+				inventoryFile.webViewLink ||
+				`https://docs.google.com/spreadsheets/d/${inventoryFile.id}`,
+		};
+	} catch (error) {
+		console.error("Inventory fetch error:", error);
+		return null;
+	}
 }
 
 // Get inventory items filtered by location
-export async function getInventoryByLocation(location: string): Promise<{ items: InventoryItem[]; location: string; detailsUrl: string } | null> {
-    const allItems = await getAllInventoryItems();
-    if (!allItems) return null;
+export async function getInventoryByLocation(location: string): Promise<{
+	items: InventoryItem[];
+	location: string;
+	detailsUrl: string;
+} | null> {
+	const allItems = await getAllInventoryItems();
+	if (!allItems) return null;
 
-    // Case-insensitive location matching, also handle URL-encoded strings
-    const decodedLocation = decodeURIComponent(location).toLowerCase();
-    const filteredItems = allItems.items.filter(
-        item => item.location.toLowerCase() === decodedLocation
-    );
+	// Case-insensitive location matching, also handle URL-encoded strings
+	const decodedLocation = decodeURIComponent(location).toLowerCase();
+	const filteredItems = allItems.items.filter(
+		(item) => item.location.toLowerCase() === decodedLocation,
+	);
 
-    // Find the original location name (with proper casing)
-    const originalLocation = allItems.items.find(
-        item => item.location.toLowerCase() === decodedLocation
-    )?.location || location;
+	// Find the original location name (with proper casing)
+	const originalLocation =
+		allItems.items.find(
+			(item) => item.location.toLowerCase() === decodedLocation,
+		)?.location || location;
 
-    return {
-        items: filteredItems,
-        location: originalLocation,
-        detailsUrl: allItems.detailsUrl
-    };
+	return {
+		items: filteredItems,
+		location: originalLocation,
+		detailsUrl: allItems.detailsUrl,
+	};
 }
 
 // Get all unique locations from inventory
 export async function getInventoryLocations(): Promise<string[]> {
-    const allItems = await getAllInventoryItems();
-    if (!allItems) return [];
+	const allItems = await getAllInventoryItems();
+	if (!allItems) return [];
 
-    const locations = new Set<string>();
-    for (const item of allItems.items) {
-        if (item.location) {
-            locations.add(item.location);
-        }
-    }
+	const locations = new Set<string>();
+	for (const item of allItems.items) {
+		if (item.location) {
+			locations.add(item.location);
+		}
+	}
 
-    return Array.from(locations).sort();
+	return Array.from(locations).sort();
 }
 
 // ============================================
@@ -814,81 +1008,452 @@ export async function getInventoryLocations(): Promise<string[]> {
 // ============================================
 
 export interface SocialChannel {
-    id: string;
-    name: string;
-    icon: string;
-    url: string;
-    color: string;
+	id: string;
+	name: string;
+	icon: string;
+	url: string;
+	color: string;
 }
 
 export async function getSocialChannels(): Promise<SocialChannel[]> {
-    // Check cache first
-    const cached = getCached<SocialChannel[]>(CACHE_KEYS.SOCIAL_CHANNELS, CACHE_TTL.SOCIAL_CHANNELS);
-    if (cached !== null && cached.length > 0) {
-        return cached;
-    }
+	// Check cache first
+	const cached = getCached<SocialChannel[]>(
+		CACHE_KEYS.SOCIAL_CHANNELS,
+		CACHE_TTL.SOCIAL_CHANNELS,
+	);
+	if (cached !== null && cached.length > 0) {
+		return cached;
+	}
 
-    if (!config.publicRootFolderId) {
-        console.log("[getSocialChannels] No publicRootFolderId configured");
-        return [];
-    }
+	if (!config.publicRootFolderId) {
+		console.log("[getSocialChannels] No publicRootFolderId configured");
+		return [];
+	}
 
-    // Look for "some" spreadsheet in root folder (not inside a year folder)
-    let someFile = await findChildByName(config.publicRootFolderId, "some", "application/vnd.google-apps.spreadsheet");
+	// Look for "some" spreadsheet in root folder (not inside a year folder)
+	let someFile = await findChildByName(
+		config.publicRootFolderId,
+		"some",
+		"application/vnd.google-apps.spreadsheet",
+	);
 
-    // Fallback: maybe they named it "some.csv" but it IS a spreadsheet
-    if (!someFile) {
-        someFile = await findChildByName(config.publicRootFolderId, "some.csv", "application/vnd.google-apps.spreadsheet");
-    }
+	// Fallback: maybe they named it "some.csv" but it IS a spreadsheet
+	if (!someFile) {
+		someFile = await findChildByName(
+			config.publicRootFolderId,
+			"some.csv",
+			"application/vnd.google-apps.spreadsheet",
+		);
+	}
 
-    if (!someFile) {
-        console.log("[getSocialChannels] Sheet 'some' not found in root folder");
-        return [];
-    }
+	if (!someFile) {
+		console.log("[getSocialChannels] Sheet 'some' not found in root folder");
+		return [];
+	}
 
-    // Fetch data starting from row 2 (skip header), columns A:D (name, icon, url, color)
-    const range = "A2:D";
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${someFile.id}/values/${range}?key=${config.apiKey}`;
+	const accessToken = await getAccessToken();
+	if (!accessToken) {
+		console.log("[getSocialChannels] Could not get access token");
+		return [];
+	}
 
-    try {
-        const res = await fetch(url);
-        if (!res.ok) {
-            console.log(`[getSocialChannels] API Error: ${res.status}`);
-            return [];
-        }
-        const data = await res.json();
-        const rows = data.values;
+	// Fetch data starting from row 2 (skip header), columns A:D (name, icon, url, color)
+	const range = "A2:D";
+	const url = `https://sheets.googleapis.com/v4/spreadsheets/${someFile.id}/values/${range}`;
 
-        if (!rows || rows.length === 0) {
-            console.log("[getSocialChannels] No data rows found");
-            return [];
-        }
+	try {
+		const res = await fetch(url, {
+			headers: { Authorization: `Bearer ${accessToken}` },
+		});
+		if (!res.ok) {
+			console.log(`[getSocialChannels] API Error: ${res.status}`);
+			return [];
+		}
+		const data = await res.json();
+		const rows = data.values;
 
-        const channels: SocialChannel[] = rows
-            .filter((row: string[]) => row[0] && row[2]) // Must have name and url at minimum
-            .map((row: string[], index: number) => ({
-                id: row[0]?.toLowerCase().replace(/\s+/g, "-") || `channel-${index}`,
-                name: row[0] || "",
-                icon: row[1] || "link",
-                url: row[2] || "",
-                color: row[3] || "bg-gray-500",
-            }));
+		if (!rows || rows.length === 0) {
+			console.log("[getSocialChannels] No data rows found");
+			return [];
+		}
 
-        if (channels.length === 0) {
-            console.log("[getSocialChannels] No valid channels parsed");
-            return [];
-        }
+		const channels: SocialChannel[] = rows
+			.filter((row: string[]) => row[0] && row[2]) // Must have name and url at minimum
+			.map((row: string[], index: number) => ({
+				id: row[0]?.toLowerCase().replace(/\s+/g, "-") || `channel-${index}`,
+				name: row[0] || "",
+				icon: row[1] || "link",
+				url: row[2] || "",
+				color: row[3] || "bg-gray-500",
+			}));
 
-        console.log(`[getSocialChannels] Loaded ${channels.length} channels from sheet`);
+		if (channels.length === 0) {
+			console.log("[getSocialChannels] No valid channels parsed");
+			return [];
+		}
 
-        // Cache the result
-        setCache(CACHE_KEYS.SOCIAL_CHANNELS, channels);
+		console.log(
+			`[getSocialChannels] Loaded ${channels.length} channels from sheet`,
+		);
 
-        return channels;
-    } catch (error) {
-        console.error("[getSocialChannels] Error:", error);
-        return [];
-    }
+		// Cache the result
+		setCache(CACHE_KEYS.SOCIAL_CHANNELS, channels);
+
+		return channels;
+	} catch (error) {
+		console.error("[getSocialChannels] Error:", error);
+		return [];
+	}
+}
+
+// ============================================
+// ANALYTICS SHEETS (Service Account Auth)
+// ============================================
+
+export interface AnalyticsSheet {
+	id: string;
+	name: string;
+	url: string;
+	lastModified?: string;
+}
+
+export interface SheetData {
+	headers: string[];
+	rows: Record<string, string>[];
+	totalRows: number;
+}
+
+/**
+ * Get the analytics folder for a given year
+ * Creates the folder if it doesn't exist (using service account)
+ */
+async function getAnalyticsFolder(
+	year?: string,
+): Promise<{ id: string; url: string } | null> {
+	const targetYear = year || new Date().getFullYear().toString();
+
+	// First, find the year folder in the public root
+	if (!config.publicRootFolderId) {
+		console.log("[getAnalyticsFolder] No publicRootFolderId configured");
+		return null;
+	}
+
+	const yearFolder = await findChildByName(
+		config.publicRootFolderId,
+		targetYear,
+		"application/vnd.google-apps.folder",
+	);
+	if (!yearFolder) {
+		console.log(`[getAnalyticsFolder] Year folder '${targetYear}' not found`);
+		return null;
+	}
+
+	// Look for analytics folder
+	const analyticsFolder = await findChildByName(
+		yearFolder.id,
+		"analytics",
+		"application/vnd.google-apps.folder",
+	);
+
+	if (analyticsFolder) {
+		return {
+			id: analyticsFolder.id,
+			url:
+				analyticsFolder.webViewLink ||
+				`https://drive.google.com/drive/folders/${analyticsFolder.id}`,
+		};
+	}
+
+	// Create analytics folder using service account
+	const accessToken = await getServiceAccountAccessToken();
+	if (!accessToken) {
+		console.log(
+			"[getAnalyticsFolder] Could not get service account access token",
+		);
+		return null;
+	}
+
+	try {
+		const createRes = await fetch("https://www.googleapis.com/drive/v3/files", {
+			method: "POST",
+			headers: {
+				Authorization: `Bearer ${accessToken}`,
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({
+				name: "analytics",
+				mimeType: "application/vnd.google-apps.folder",
+				parents: [yearFolder.id],
+			}),
+		});
+
+		if (!createRes.ok) {
+			const errorText = await createRes.text();
+			console.error("[getAnalyticsFolder] Failed to create folder:", errorText);
+			return null;
+		}
+
+		const newFolder = await createRes.json();
+		console.log(
+			`[getAnalyticsFolder] Created analytics folder for ${targetYear}: ${newFolder.id}`,
+		);
+
+		return {
+			id: newFolder.id,
+			url:
+				newFolder.webViewLink ||
+				`https://drive.google.com/drive/folders/${newFolder.id}`,
+		};
+	} catch (error) {
+		console.error("[getAnalyticsFolder] Error creating folder:", error);
+		return null;
+	}
+}
+
+/**
+ * List all Google Sheets in the analytics folder
+ * @param year - Optional year (defaults to current year)
+ * @param forceRefresh - Bypass cache if true
+ */
+export async function getAnalyticsSheets(
+	year?: string,
+	forceRefresh = false,
+): Promise<AnalyticsSheet[]> {
+	const cacheKey = `${CACHE_KEYS.ANALYTICS_LIST}_${year || "current"}`;
+
+	// Check cache unless force refresh
+	if (!forceRefresh) {
+		const cached = getCached<AnalyticsSheet[]>(
+			cacheKey,
+			CACHE_TTL.ANALYTICS_LIST,
+		);
+		if (cached !== null) {
+			return cached;
+		}
+	}
+
+	const analyticsFolder = await getAnalyticsFolder(year);
+	if (!analyticsFolder) {
+		console.log("[getAnalyticsSheets] No analytics folder found");
+		return [];
+	}
+
+	// Use service account to list sheets (works for private sheets)
+	const accessToken = await getServiceAccountAccessToken();
+	if (!accessToken) {
+		console.log("[getAnalyticsSheets] Could not get service account token");
+		return [];
+	}
+
+	try {
+		const q = `'${analyticsFolder.id}' in parents and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false`;
+		const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name,webViewLink,modifiedTime)&orderBy=modifiedTime desc`;
+
+		const res = await fetch(url, {
+			headers: { Authorization: `Bearer ${accessToken}` },
+		});
+
+		if (!res.ok) {
+			const errorText = await res.text();
+			console.error("[getAnalyticsSheets] API Error:", errorText);
+			return [];
+		}
+
+		const data = await res.json();
+		const sheets: AnalyticsSheet[] = (data.files || []).map(
+			(f: {
+				id: string;
+				name: string;
+				webViewLink?: string;
+				modifiedTime?: string;
+			}) => ({
+				id: f.id,
+				name: f.name,
+				url:
+					f.webViewLink ||
+					`https://docs.google.com/spreadsheets/d/${f.id}`,
+				lastModified: f.modifiedTime,
+			}),
+		);
+
+		console.log(`[getAnalyticsSheets] Found ${sheets.length} sheets`);
+
+		// Cache the result
+		setCache(cacheKey, sheets);
+
+		return sheets;
+	} catch (error) {
+		console.error("[getAnalyticsSheets] Error:", error);
+		return [];
+	}
+}
+
+/**
+ * Get data from a Google Sheet (headers + rows)
+ * @param sheetId - The Google Sheet ID
+ * @param forceRefresh - Bypass cache if true
+ */
+export async function getSheetData(
+	sheetId: string,
+	forceRefresh = false,
+): Promise<SheetData | null> {
+	const cacheKey = `${CACHE_KEYS.ANALYTICS_DATA_PREFIX}${sheetId}`;
+
+	// Check cache unless force refresh
+	if (!forceRefresh) {
+		const cached = getCached<SheetData>(cacheKey, CACHE_TTL.ANALYTICS_DATA);
+		if (cached !== null) {
+			return cached;
+		}
+	}
+
+	// Use service account for private sheets
+	const accessToken = await getServiceAccountAccessToken();
+	if (!accessToken) {
+		console.log("[getSheetData] Could not get service account token");
+		return null;
+	}
+
+	try {
+		// Fetch all data from first sheet
+		const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/A:ZZ`;
+
+		const res = await fetch(url, {
+			headers: { Authorization: `Bearer ${accessToken}` },
+		});
+
+		if (!res.ok) {
+			const errorText = await res.text();
+			console.error("[getSheetData] API Error:", errorText);
+			return null;
+		}
+
+		const data = await res.json();
+		const values: string[][] = data.values || [];
+
+		if (values.length === 0) {
+			return { headers: [], rows: [], totalRows: 0 };
+		}
+
+		// First row is headers
+		const headers = values[0].map((h: string) => (h || "").trim());
+
+		// Remaining rows as objects keyed by header
+		const rows = values.slice(1).map((row: string[]) => {
+			const obj: Record<string, string> = {};
+			headers.forEach((header, index) => {
+				obj[header] = (row[index] || "").trim();
+			});
+			return obj;
+		});
+
+		const result: SheetData = {
+			headers,
+			rows,
+			totalRows: rows.length,
+		};
+
+		console.log(
+			`[getSheetData] Loaded ${headers.length} columns, ${rows.length} rows`,
+		);
+
+		// Cache the result
+		setCache(cacheKey, result);
+
+		return result;
+	} catch (error) {
+		console.error("[getSheetData] Error:", error);
+		return null;
+	}
+}
+
+/**
+ * Import data to a new Google Sheet in the analytics folder
+ * @param name - Name for the new sheet
+ * @param headers - Column headers
+ * @param rows - Data rows
+ * @param year - Optional year (defaults to current year)
+ */
+export async function importToAnalyticsSheet(
+	name: string,
+	headers: string[],
+	rows: string[][],
+	year?: string,
+): Promise<AnalyticsSheet | null> {
+	const analyticsFolder = await getAnalyticsFolder(year);
+	if (!analyticsFolder) {
+		console.error("[importToAnalyticsSheet] No analytics folder found");
+		return null;
+	}
+
+	const accessToken = await getServiceAccountAccessToken();
+	if (!accessToken) {
+		console.error("[importToAnalyticsSheet] Could not get access token");
+		return null;
+	}
+
+	try {
+		// Create a new spreadsheet
+		const createRes = await fetch(
+			"https://sheets.googleapis.com/v4/spreadsheets",
+			{
+				method: "POST",
+				headers: {
+					Authorization: `Bearer ${accessToken}`,
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify({
+					properties: { title: name },
+				}),
+			},
+		);
+
+		if (!createRes.ok) {
+			const errorText = await createRes.text();
+			console.error("[importToAnalyticsSheet] Failed to create sheet:", errorText);
+			return null;
+		}
+
+		const newSheet = await createRes.json();
+		const sheetId = newSheet.spreadsheetId;
+
+		// Move the sheet to the analytics folder
+		await fetch(
+			`https://www.googleapis.com/drive/v3/files/${sheetId}?addParents=${analyticsFolder.id}&removeParents=root`,
+			{
+				method: "PATCH",
+				headers: { Authorization: `Bearer ${accessToken}` },
+			},
+		);
+
+		// Populate with data (headers + rows)
+		const allData = [headers, ...rows];
+		await fetch(
+			`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/A1?valueInputOption=RAW`,
+			{
+				method: "PUT",
+				headers: {
+					Authorization: `Bearer ${accessToken}`,
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify({ values: allData }),
+			},
+		);
+
+		console.log(`[importToAnalyticsSheet] Created and populated: ${name} (${sheetId})`);
+
+		// Clear the sheets list cache
+		clearCache(`${CACHE_KEYS.ANALYTICS_LIST}_${year || "current"}`);
+
+		return {
+			id: sheetId,
+			name,
+			url: `https://docs.google.com/spreadsheets/d/${sheetId}`,
+		};
+	} catch (error) {
+		console.error("[importToAnalyticsSheet] Error:", error);
+		return null;
+	}
 }
 
 // ============================================
@@ -896,118 +1461,134 @@ export async function getSocialChannels(): Promise<SocialChannel[]> {
 // ============================================
 
 interface FormSubmission {
-    type: string;
-    name: string;
-    email: string;
-    apartmentNumber: string;
-    message: string;
+	type: string;
+	name: string;
+	email: string;
+	apartmentNumber: string;
+	message: string;
 }
 
 // Simple JWT creation for Google Service Account
 async function getServiceAccountAccessToken(): Promise<string | null> {
-    if (!config.serviceAccountEmail || !config.serviceAccountPrivateKey) {
-        console.error("[getServiceAccountAccessToken] Missing service account credentials");
-        return null;
-    }
+	if (!config.serviceAccountEmail || !config.serviceAccountPrivateKey) {
+		console.error(
+			"[getServiceAccountAccessToken] Missing service account credentials",
+		);
+		return null;
+	}
 
-    try {
-        const now = Math.floor(Date.now() / 1000);
-        const expiry = now + 3600; // 1 hour
+	try {
+		const now = Math.floor(Date.now() / 1000);
+		const expiry = now + 3600; // 1 hour
 
-        // JWT Header
-        const header = { alg: "RS256", typ: "JWT" };
+		// JWT Header
+		const header = { alg: "RS256", typ: "JWT" };
 
-        // JWT Payload - includes both Sheets and Drive scopes
-        const payload = {
-            iss: config.serviceAccountEmail,
-            scope: "https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file",
-            aud: "https://oauth2.googleapis.com/token",
-            iat: now,
-            exp: expiry,
-        };
+		// JWT Payload - includes Sheets and Drive scopes (readonly + file for uploads)
+		const payload = {
+			iss: config.serviceAccountEmail,
+			scope:
+				"https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.readonly",
+			aud: "https://oauth2.googleapis.com/token",
+			iat: now,
+			exp: expiry,
+		};
 
-        // Base64url encode
-        const base64url = (obj: object) =>
-            Buffer.from(JSON.stringify(obj)).toString("base64url");
+		// Base64url encode
+		const base64url = (obj: object) =>
+			Buffer.from(JSON.stringify(obj)).toString("base64url");
 
-        const unsignedToken = `${base64url(header)}.${base64url(payload)}`;
+		const unsignedToken = `${base64url(header)}.${base64url(payload)}`;
 
-        // Sign with private key using Web Crypto API
-        const crypto = await import("crypto");
-        const sign = crypto.createSign("RSA-SHA256");
-        sign.update(unsignedToken);
-        const signature = sign.sign(config.serviceAccountPrivateKey, "base64url");
+		// Sign with private key using Web Crypto API
+		const crypto = await import("node:crypto");
+		const sign = crypto.createSign("RSA-SHA256");
+		sign.update(unsignedToken);
+		const signature = sign.sign(config.serviceAccountPrivateKey, "base64url");
 
-        const jwt = `${unsignedToken}.${signature}`;
+		const jwt = `${unsignedToken}.${signature}`;
 
-        // Exchange JWT for access token
-        const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
-            method: "POST",
-            headers: { "Content-Type": "application/x-www-form-urlencoded" },
-            body: new URLSearchParams({
-                grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
-                assertion: jwt,
-            }),
-        });
+		// Exchange JWT for access token
+		const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+			method: "POST",
+			headers: { "Content-Type": "application/x-www-form-urlencoded" },
+			body: new URLSearchParams({
+				grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+				assertion: jwt,
+			}),
+		});
 
-        if (!tokenRes.ok) {
-            const errorText = await tokenRes.text();
-            console.error("[getServiceAccountAccessToken] Token exchange failed:", errorText);
-            return null;
-        }
+		if (!tokenRes.ok) {
+			const errorText = await tokenRes.text();
+			console.error(
+				"[getServiceAccountAccessToken] Token exchange failed:",
+				errorText,
+			);
+			return null;
+		}
 
-        const tokenData = await tokenRes.json();
-        return tokenData.access_token;
-    } catch (error) {
-        console.error("[getServiceAccountAccessToken] Error:", error);
-        return null;
-    }
+		const tokenData = await tokenRes.json();
+		return tokenData.access_token;
+	} catch (error) {
+		console.error("[getServiceAccountAccessToken] Error:", error);
+		return null;
+	}
 }
 
-export async function saveFormSubmission(submission: FormSubmission): Promise<boolean> {
-    if (!config.submissionsSheetId) {
-        console.error("[saveFormSubmission] No submissions sheet ID configured");
-        return false;
-    }
+export async function saveFormSubmission(
+	submission: FormSubmission,
+): Promise<boolean> {
+	if (!config.submissionsSheetId) {
+		console.error("[saveFormSubmission] No submissions sheet ID configured");
+		return false;
+	}
 
-    const accessToken = await getServiceAccountAccessToken();
-    if (!accessToken) {
-        console.error("[saveFormSubmission] Could not get access token");
-        return false;
-    }
+	const accessToken = await getServiceAccountAccessToken();
+	if (!accessToken) {
+		console.error("[saveFormSubmission] Could not get access token");
+		return false;
+	}
 
-    const timestamp = new Date().toISOString();
-    // Status options: "Uusi / New", "Käsittelyssä / In Progress", "Hyväksytty / Approved", "Hylätty / Rejected", "Valmis / Done"
-    const defaultStatus = "Uusi / New";
-    // Column order: Timestamp, Type, Name, Email, Apartment, Message, Status
-    const row = [timestamp, submission.type, submission.name, submission.email, submission.apartmentNumber, submission.message, defaultStatus];
+	const timestamp = new Date().toISOString();
+	// Status options: "Uusi / New", "Käsittelyssä / In Progress", "Hyväksytty / Approved", "Hylätty / Rejected", "Valmis / Done"
+	const defaultStatus = "Uusi / New";
+	// Column order: Timestamp, Type, Name, Email, Apartment, Message, Status
+	const row = [
+		timestamp,
+		submission.type,
+		submission.name,
+		submission.email,
+		submission.apartmentNumber,
+		submission.message,
+		defaultStatus,
+	];
 
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${config.submissionsSheetId}/values/A:G:append?valueInputOption=USER_ENTERED`;
+	const url = `https://sheets.googleapis.com/v4/spreadsheets/${config.submissionsSheetId}/values/A:G:append?valueInputOption=USER_ENTERED`;
 
-    try {
-        const res = await fetch(url, {
-            method: "POST",
-            headers: {
-                "Authorization": `Bearer ${accessToken}`,
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-                values: [row],
-            }),
-        });
+	try {
+		const res = await fetch(url, {
+			method: "POST",
+			headers: {
+				Authorization: `Bearer ${accessToken}`,
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({
+				values: [row],
+			}),
+		});
 
-        if (!res.ok) {
-            const errorText = await res.text();
-            console.error("[saveFormSubmission] API Error:", errorText);
-            return false;
-        }
+		if (!res.ok) {
+			const errorText = await res.text();
+			console.error("[saveFormSubmission] API Error:", errorText);
+			return false;
+		}
 
-        console.log("[saveFormSubmission] Successfully saved submission");
-        return true;
-    } catch (error) {
-        console.error("[saveFormSubmission] Error:", error);
-        return false;
-    }
+		console.log("[saveFormSubmission] Successfully saved submission");
+		return true;
+	} catch (error) {
+		console.error("[saveFormSubmission] Error:", error);
+		return false;
+	}
 }
 
 // ============================================
@@ -1015,103 +1596,110 @@ export async function saveFormSubmission(submission: FormSubmission): Promise<bo
 // ============================================
 
 export interface Submission {
-    rowIndex: number;  // 1-indexed row number in sheet (for updates)
-    timestamp: string;
-    type: string;
-    name: string;
-    email: string;
-    message: string;
-    status: string;
+	rowIndex: number; // 1-indexed row number in sheet (for updates)
+	timestamp: string;
+	type: string;
+	name: string;
+	email: string;
+	message: string;
+	status: string;
 }
 
 export async function getSubmissions(): Promise<Submission[]> {
-    if (!config.submissionsSheetId) {
-        console.error("[getSubmissions] No submissions sheet ID configured");
-        return [];
-    }
+	if (!config.submissionsSheetId) {
+		console.error("[getSubmissions] No submissions sheet ID configured");
+		return [];
+	}
 
-    const accessToken = await getServiceAccountAccessToken();
-    if (!accessToken) {
-        console.error("[getSubmissions] Could not get access token");
-        return [];
-    }
+	const accessToken = await getServiceAccountAccessToken();
+	if (!accessToken) {
+		console.error("[getSubmissions] Could not get access token");
+		return [];
+	}
 
-    // Fetch all rows (skip header row)
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${config.submissionsSheetId}/values/A2:F1000`;
+	// Fetch all rows (skip header row)
+	const url = `https://sheets.googleapis.com/v4/spreadsheets/${config.submissionsSheetId}/values/A2:F1000`;
 
-    try {
-        const res = await fetch(url, {
-            headers: { Authorization: `Bearer ${accessToken}` },
-        });
+	try {
+		const res = await fetch(url, {
+			headers: { Authorization: `Bearer ${accessToken}` },
+		});
 
-        if (!res.ok) {
-            const errorText = await res.text();
-            console.error("[getSubmissions] API Error:", errorText);
-            return [];
-        }
+		if (!res.ok) {
+			const errorText = await res.text();
+			console.error("[getSubmissions] API Error:", errorText);
+			return [];
+		}
 
-        const data = await res.json();
-        const rows = data.values || [];
+		const data = await res.json();
+		const rows = data.values || [];
 
-        return rows.map((row: string[], index: number) => ({
-            rowIndex: index + 2,  // +2 because we start from A2 (skip header) and 1-indexed
-            timestamp: row[0] || "",
-            type: row[1] || "",
-            name: row[2] || "",
-            email: row[3] || "",
-            message: row[4] || "",
-            status: row[5] || "Uusi / New",
-        }));
-    } catch (error) {
-        console.error("[getSubmissions] Error:", error);
-        return [];
-    }
+		return rows.map((row: string[], index: number) => ({
+			rowIndex: index + 2, // +2 because we start from A2 (skip header) and 1-indexed
+			timestamp: row[0] || "",
+			type: row[1] || "",
+			name: row[2] || "",
+			email: row[3] || "",
+			message: row[4] || "",
+			status: row[5] || "Uusi / New",
+		}));
+	} catch (error) {
+		console.error("[getSubmissions] Error:", error);
+		return [];
+	}
 }
 
 // ============================================
 // ADMIN: UPDATE SUBMISSION STATUS
 // ============================================
 
-export async function updateSubmissionStatus(rowIndex: number, newStatus: string): Promise<boolean> {
-    if (!config.submissionsSheetId) {
-        console.error("[updateSubmissionStatus] No submissions sheet ID configured");
-        return false;
-    }
+export async function updateSubmissionStatus(
+	rowIndex: number,
+	newStatus: string,
+): Promise<boolean> {
+	if (!config.submissionsSheetId) {
+		console.error(
+			"[updateSubmissionStatus] No submissions sheet ID configured",
+		);
+		return false;
+	}
 
-    const accessToken = await getServiceAccountAccessToken();
-    if (!accessToken) {
-        console.error("[updateSubmissionStatus] Could not get access token");
-        return false;
-    }
+	const accessToken = await getServiceAccountAccessToken();
+	if (!accessToken) {
+		console.error("[updateSubmissionStatus] Could not get access token");
+		return false;
+	}
 
-    // Update only the Status column (F) for the specific row
-    const range = `F${rowIndex}`;
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${config.submissionsSheetId}/values/${range}?valueInputOption=USER_ENTERED`;
+	// Update only the Status column (F) for the specific row
+	const range = `F${rowIndex}`;
+	const url = `https://sheets.googleapis.com/v4/spreadsheets/${config.submissionsSheetId}/values/${range}?valueInputOption=USER_ENTERED`;
 
-    try {
-        const res = await fetch(url, {
-            method: "PUT",
-            headers: {
-                Authorization: `Bearer ${accessToken}`,
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-                values: [[newStatus]],
-            }),
-        });
+	try {
+		const res = await fetch(url, {
+			method: "PUT",
+			headers: {
+				Authorization: `Bearer ${accessToken}`,
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({
+				values: [[newStatus]],
+			}),
+		});
 
-        if (!res.ok) {
-            const errorText = await res.text();
-            console.error("[updateSubmissionStatus] API Error:", errorText);
-            return false;
-        }
+		if (!res.ok) {
+			const errorText = await res.text();
+			console.error("[updateSubmissionStatus] API Error:", errorText);
+			return false;
+		}
 
-        console.log(`[updateSubmissionStatus] Row ${rowIndex} updated to: ${newStatus}`);
-        return true;
-    } catch (error) {
-        console.error("[updateSubmissionStatus] Error:", error);
-        return false;
-    }
+		console.log(
+			`[updateSubmissionStatus] Row ${rowIndex} updated to: ${newStatus}`,
+		);
+		return true;
+	} catch (error) {
+		console.error("[updateSubmissionStatus] Error:", error);
+		return false;
+	}
 }
 
 // ============================================
@@ -1119,70 +1707,70 @@ export async function updateSubmissionStatus(rowIndex: number, newStatus: string
 // ============================================
 
 export async function deleteSubmission(rowIndex: number): Promise<boolean> {
-    if (!config.submissionsSheetId) {
-        console.error("[deleteSubmission] No submissions sheet ID configured");
-        return false;
-    }
+	if (!config.submissionsSheetId) {
+		console.error("[deleteSubmission] No submissions sheet ID configured");
+		return false;
+	}
 
-    const accessToken = await getServiceAccountAccessToken();
-    if (!accessToken) {
-        console.error("[deleteSubmission] Could not get access token");
-        return false;
-    }
+	const accessToken = await getServiceAccountAccessToken();
+	if (!accessToken) {
+		console.error("[deleteSubmission] Could not get access token");
+		return false;
+	}
 
-    // First, get the sheet ID (gid) - we need it for the batchUpdate request
-    const metadataUrl = `https://sheets.googleapis.com/v4/spreadsheets/${config.submissionsSheetId}?fields=sheets.properties`;
+	// First, get the sheet ID (gid) - we need it for the batchUpdate request
+	const metadataUrl = `https://sheets.googleapis.com/v4/spreadsheets/${config.submissionsSheetId}?fields=sheets.properties`;
 
-    try {
-        const metaRes = await fetch(metadataUrl, {
-            headers: { Authorization: `Bearer ${accessToken}` },
-        });
+	try {
+		const metaRes = await fetch(metadataUrl, {
+			headers: { Authorization: `Bearer ${accessToken}` },
+		});
 
-        if (!metaRes.ok) {
-            console.error("[deleteSubmission] Failed to get sheet metadata");
-            return false;
-        }
+		if (!metaRes.ok) {
+			console.error("[deleteSubmission] Failed to get sheet metadata");
+			return false;
+		}
 
-        const metaData = await metaRes.json();
-        const sheetId = metaData.sheets?.[0]?.properties?.sheetId || 0;
+		const metaData = await metaRes.json();
+		const sheetId = metaData.sheets?.[0]?.properties?.sheetId || 0;
 
-        // Use batchUpdate to delete the row
-        const url = `https://sheets.googleapis.com/v4/spreadsheets/${config.submissionsSheetId}:batchUpdate`;
+		// Use batchUpdate to delete the row
+		const url = `https://sheets.googleapis.com/v4/spreadsheets/${config.submissionsSheetId}:batchUpdate`;
 
-        const res = await fetch(url, {
-            method: "POST",
-            headers: {
-                Authorization: `Bearer ${accessToken}`,
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-                requests: [
-                    {
-                        deleteDimension: {
-                            range: {
-                                sheetId: sheetId,
-                                dimension: "ROWS",
-                                startIndex: rowIndex - 1, // 0-indexed
-                                endIndex: rowIndex,       // exclusive
-                            },
-                        },
-                    },
-                ],
-            }),
-        });
+		const res = await fetch(url, {
+			method: "POST",
+			headers: {
+				Authorization: `Bearer ${accessToken}`,
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({
+				requests: [
+					{
+						deleteDimension: {
+							range: {
+								sheetId: sheetId,
+								dimension: "ROWS",
+								startIndex: rowIndex - 1, // 0-indexed
+								endIndex: rowIndex, // exclusive
+							},
+						},
+					},
+				],
+			}),
+		});
 
-        if (!res.ok) {
-            const errorText = await res.text();
-            console.error("[deleteSubmission] API Error:", errorText);
-            return false;
-        }
+		if (!res.ok) {
+			const errorText = await res.text();
+			console.error("[deleteSubmission] API Error:", errorText);
+			return false;
+		}
 
-        console.log(`[deleteSubmission] Row ${rowIndex} deleted successfully`);
-        return true;
-    } catch (error) {
-        console.error("[deleteSubmission] Error:", error);
-        return false;
-    }
+		console.log(`[deleteSubmission] Row ${rowIndex} deleted successfully`);
+		return true;
+	} catch (error) {
+		console.error("[deleteSubmission] Error:", error);
+		return false;
+	}
 }
 
 // ============================================
@@ -1194,41 +1782,45 @@ export async function deleteSubmission(rowIndex: number): Promise<boolean> {
  * Used for attaching minutes PDFs to reimbursement emails
  */
 export async function getFileAsBase64(fileId: string): Promise<string | null> {
-    if (!fileId) {
-        console.error("[getFileAsBase64] Missing fileId");
-        return null;
-    }
+	if (!fileId) {
+		console.error("[getFileAsBase64] Missing fileId");
+		return null;
+	}
 
-    // First try with service account for private files
-    const accessToken = await getServiceAccountAccessToken();
+	// First try with service account for private files
+	const accessToken = await getServiceAccountAccessToken();
 
-    try {
-        let url: string;
-        let headers: HeadersInit = {};
+	try {
+		let url: string;
+		let headers: HeadersInit = {};
 
-        if (accessToken) {
-            // Use service account auth for potentially private files
-            url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`;
-            headers = { Authorization: `Bearer ${accessToken}` };
-        } else {
-            // Fallback to API key for public files
-            url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&key=${config.apiKey}`;
-        }
+		if (accessToken) {
+			// Use service account auth for potentially private files
+			url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`;
+			headers = { Authorization: `Bearer ${accessToken}` };
+		} else {
+			// Fallback to API key for public files
+			url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&key=${config.apiKey}`;
+		}
 
-        const res = await fetch(url, { headers });
+		const res = await fetch(url, { headers });
 
-        if (!res.ok) {
-            console.error(`[getFileAsBase64] Failed to download file ${fileId}: ${res.status}`);
-            return null;
-        }
+		if (!res.ok) {
+			console.error(
+				`[getFileAsBase64] Failed to download file ${fileId}: ${res.status}`,
+			);
+			return null;
+		}
 
-        const arrayBuffer = await res.arrayBuffer();
-        const base64 = Buffer.from(arrayBuffer).toString("base64");
+		const arrayBuffer = await res.arrayBuffer();
+		const base64 = Buffer.from(arrayBuffer).toString("base64");
 
-        console.log(`[getFileAsBase64] Downloaded file ${fileId} (${arrayBuffer.byteLength} bytes)`);
-        return base64;
-    } catch (error) {
-        console.error("[getFileAsBase64] Error:", error);
-        return null;
-    }
+		console.log(
+			`[getFileAsBase64] Downloaded file ${fileId} (${arrayBuffer.byteLength} bytes)`,
+		);
+		return base64;
+	} catch (error) {
+		console.error("[getFileAsBase64] Error:", error);
+		return null;
+	}
 }

@@ -1,23 +1,19 @@
-import type { Route } from "./+types/settings.users";
-import { useFetcher } from "react-router";
 import { useEffect } from "react";
+import { useTranslation } from "react-i18next";
+import { useFetcher } from "react-router";
 import { toast } from "sonner";
-import { requirePermission, isAdmin } from "~/lib/auth.server";
-import { getDatabase, type UserRole, type Role } from "~/db";
 import { PageWrapper } from "~/components/layout/page-layout";
-import { cn } from "~/lib/utils";
+import { getDatabase, type Role } from "~/db";
+import { isAdmin, requirePermission } from "~/lib/auth.server";
 import { SITE_CONFIG } from "~/lib/config.server";
-
-// Legacy roles for fallback display
-const LEGACY_ROLE_LABELS: Record<UserRole, { fi: string; en: string }> = {
-	resident: { fi: "Asukas", en: "Resident" },
-	board_member: { fi: "Hallituksen jäsen", en: "Board Member" },
-	admin: { fi: "Ylläpitäjä", en: "Admin" },
-};
+import { cn } from "~/lib/utils";
+import type { Route } from "./+types/settings.users";
 
 export function meta({ data }: Route.MetaArgs) {
 	return [
-		{ title: `${data?.siteConfig?.name || "Portal"} - Käyttäjähallinta / Users` },
+		{
+			title: `${data?.siteConfig?.name || "Portal"} - Käyttäjähallinta / Users`,
+		},
 		{ name: "robots", content: "noindex" },
 	];
 }
@@ -26,7 +22,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 	// Throw 404 for unauthorized access to hide admin routes
 	try {
 		await requirePermission(request, "settings:users", getDatabase);
-	} catch (error) {
+	} catch (_error) {
 		throw new Response("Not Found", { status: 404 });
 	}
 
@@ -37,11 +33,11 @@ export async function loader({ request }: Route.LoaderArgs) {
 	]);
 
 	// Enrich users with role info
-	const usersWithRoles = users.map(user => {
-		const userRole = roles.find(r => r.id === user.roleId);
+	const usersWithRoles = users.map((user) => {
+		const userRole = roles.find((r) => r.id === user.roleId);
 		return {
 			...user,
-			roleName: userRole?.name || LEGACY_ROLE_LABELS[user.role]?.en || user.role,
+			roleName: userRole?.name || "Unknown",
 			roleColor: userRole?.color || "bg-gray-500",
 			isSuperAdmin: isAdmin(user.email),
 		};
@@ -58,7 +54,7 @@ export async function action({ request }: Route.ActionArgs) {
 	// Check permission - return error JSON instead of throwing for fetcher compatibility
 	try {
 		await requirePermission(request, "users:manage_roles", getDatabase);
-	} catch (error) {
+	} catch (_error) {
 		return { success: false, error: "unauthorized" };
 	}
 
@@ -79,17 +75,7 @@ export async function action({ request }: Route.ActionArgs) {
 			return { success: false, error: "super_admin_protected" };
 		}
 
-		// Get the role to also update the legacy role field
-		const role = await db.getRoleById(roleId);
-		const legacyRole = role?.name.toLowerCase().replace(" ", "_") as UserRole;
-
-		await db.updateUser(userId, {
-			roleId,
-			// Map to closest legacy role for backward compatibility
-			role: role?.isSystem
-				? (legacyRole === "admin" ? "admin" : legacyRole === "board_member" ? "board_member" : "resident")
-				: "board_member", // Custom roles map to board_member for legacy systems
-		});
+		await db.updateUser(userId, { roleId });
 
 		return { success: true };
 	} catch (error) {
@@ -100,15 +86,7 @@ export async function action({ request }: Route.ActionArgs) {
 
 export default function AdminUsers({ loaderData }: Route.ComponentProps) {
 	const { users, roles } = loaderData;
-
-	// Count users per role
-	const roleCounts = roles.reduce((acc, role) => {
-		acc[role.id] = users.filter(u => u.roleId === role.id).length;
-		return acc;
-	}, {} as Record<string, number>);
-
-	// Count users without new roleId (legacy)
-	const legacyCount = users.filter(u => !u.roleId).length;
+	const { t } = useTranslation();
 
 	return (
 		<PageWrapper>
@@ -117,12 +95,10 @@ export default function AdminUsers({ loaderData }: Route.ComponentProps) {
 				<div className="flex items-center justify-between mb-8">
 					<div>
 						<h1 className="text-3xl md:text-4xl font-black text-gray-900 dark:text-white">
-							Käyttäjähallinta
+							{t("settings.users.title")}
 						</h1>
-						<p className="text-lg text-gray-500">User Management</p>
 					</div>
 				</div>
-
 
 				{/* Users Table */}
 				<div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
@@ -131,19 +107,19 @@ export default function AdminUsers({ loaderData }: Route.ComponentProps) {
 							<thead className="bg-gray-50 dark:bg-gray-900">
 								<tr>
 									<th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-500">
-										Nimi / Name
+										{t("settings.users.headers.name")}
 									</th>
 									<th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-500">
-										Sähköposti / Email
+										{t("settings.users.headers.email")}
 									</th>
 									<th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-500">
-										Asunto / Apartment
+										{t("settings.users.headers.apartment")}
 									</th>
 									<th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-500">
-										Rooli / Role
+										{t("settings.users.headers.role")}
 									</th>
 									<th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-500">
-										Liittynyt / Joined
+										{t("settings.users.headers.joined")}
 									</th>
 								</tr>
 							</thead>
@@ -154,7 +130,7 @@ export default function AdminUsers({ loaderData }: Route.ComponentProps) {
 											colSpan={5}
 											className="px-4 py-12 text-center text-gray-500"
 										>
-											Ei käyttäjiä / No users yet
+											{t("settings.users.no_users")}
 										</td>
 									</tr>
 								) : (
@@ -176,8 +152,7 @@ interface UserRowProps {
 		id: string;
 		email: string;
 		name: string;
-		role: UserRole;
-		roleId: string | null;
+		roleId: string;
 		roleName: string;
 		roleColor: string;
 		apartmentNumber: string | null;
@@ -189,26 +164,30 @@ interface UserRowProps {
 
 function UserRow({ user, roles }: UserRowProps) {
 	const fetcher = useFetcher<{ success: boolean; error?: string }>();
-	const formattedDate = new Date(user.createdAt).toLocaleDateString("fi-FI", {
-		day: "numeric",
-		month: "short",
-		year: "numeric",
-	});
+	const { t, i18n } = useTranslation();
+	const formattedDate = new Date(user.createdAt).toLocaleDateString(
+		i18n.language,
+		{
+			day: "numeric",
+			month: "short",
+			year: "numeric",
+		},
+	);
 
 	// Show toast when role update completes
 	useEffect(() => {
 		if (fetcher.state === "idle" && fetcher.data) {
 			if (fetcher.data.success) {
-				toast.success("Rooli päivitetty / Role updated");
+				toast.success(t("settings.users.role_updated"));
 			} else {
 				if (fetcher.data.error === "super_admin_protected") {
-					toast.error("Pääkäyttäjän roolia ei voi muuttaa / Cannot change Super Admin role");
+					toast.error(t("settings.users.cannot_change_super_admin"));
 				} else {
-					toast.error("Roolin päivitys epäonnistui / Failed to update role");
+					toast.error(t("settings.users.update_failed"));
 				}
 			}
 		}
-	}, [fetcher.state, fetcher.data]);
+	}, [fetcher.state, fetcher.data, t]);
 
 	return (
 		<tr className="hover:bg-gray-50 dark:hover:bg-gray-900/50 transition-colors">
@@ -217,7 +196,7 @@ function UserRow({ user, roles }: UserRowProps) {
 					{user.name}
 					{user.isSuperAdmin && (
 						<span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400">
-							Super Admin
+							{t("settings.users.super_admin")}
 						</span>
 					)}
 				</p>
@@ -230,10 +209,12 @@ function UserRow({ user, roles }: UserRowProps) {
 			</td>
 			<td className="px-4 py-4">
 				{user.isSuperAdmin ? (
-					<div className={cn(
-						"px-3 py-1.5 rounded-lg text-sm font-medium border-0 inline-flex items-center gap-1.5 text-white opacity-90 cursor-not-allowed",
-						user.roleColor
-					)}>
+					<div
+						className={cn(
+							"px-3 py-1.5 rounded-lg text-sm font-medium border-0 inline-flex items-center gap-1.5 text-white opacity-90 cursor-not-allowed",
+							user.roleColor,
+						)}
+					>
 						<span className="material-symbols-outlined text-base">lock</span>
 						{user.roleName}
 					</div>
@@ -242,20 +223,15 @@ function UserRow({ user, roles }: UserRowProps) {
 						<input type="hidden" name="userId" value={user.id} />
 						<select
 							name="roleId"
-							defaultValue={user.roleId || ""}
+							defaultValue={user.roleId}
 							onChange={(e) => e.target.form?.requestSubmit()}
 							disabled={fetcher.state !== "idle"}
 							className={cn(
 								"px-3 py-1.5 rounded-lg text-sm font-medium border-0 cursor-pointer transition-colors text-white",
 								user.roleColor,
-								fetcher.state !== "idle" && "opacity-50 cursor-wait"
+								fetcher.state !== "idle" && "opacity-50 cursor-wait",
 							)}
 						>
-							{!user.roleId && (
-								<option value="" disabled>
-									{user.roleName} (legacy)
-								</option>
-							)}
 							{roles.map((role) => (
 								<option key={role.id} value={role.id}>
 									{role.name}
@@ -271,4 +247,3 @@ function UserRow({ user, roles }: UserRowProps) {
 		</tr>
 	);
 }
-
